@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-/** Vaayu brand lockup — big logo mark + Space Grotesk wordmark. */
+/** Vaayu brand lockup — transparent logo mark + Space Grotesk wordmark. */
 export function Wordmark({
   compact = false,
   size = "md",
@@ -10,9 +10,13 @@ export function Wordmark({
   /** "md" (header/nav) or "lg" (hero moments like sign-in). */
   size?: "md" | "lg";
 }) {
-  const dims = size === "lg" ? { w: 176, h: 157 } : { w: 96, h: 85 };
+  // Intrinsic dimensions match the source PNG aspect (~1.124); the rendered
+  // height is set by class below with w-auto. No rounded corners, ring,
+  // background or shadow — the PNG already has a transparent background and
+  // must float cleanly on any surface.
+  const dims = size === "lg" ? { w: 224, h: 199 } : { w: 128, h: 114 };
   return (
-    <Link href="/" className="group flex items-center gap-3">
+    <Link href="/" className="group flex items-center gap-4">
       <Image
         src="/logo.png"
         alt="Vaayu Workspace logo"
@@ -20,17 +24,27 @@ export function Wordmark({
         height={dims.h}
         priority
         className={
-          size === "lg"
-            ? "h-20 w-auto shrink-0 rounded-3xl shadow-[0_16px_56px_rgba(168,85,247,0.55)] transition-transform duration-200 group-hover:scale-105"
-            : "h-12 w-auto shrink-0 rounded-2xl shadow-[0_8px_28px_rgba(168,85,247,0.45)] transition-transform duration-200 group-hover:scale-105"
+          compact
+            ? "h-10 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
+            : size === "lg"
+              ? "h-28 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
+              : "h-16 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
         }
       />
       {!compact && (
         <span className="leading-none">
-          <span className="block font-display text-[17px] font-bold tracking-tight">
+          <span
+            className={`block font-display font-bold tracking-tight ${
+              size === "lg" ? "text-3xl" : "text-[22px]"
+            }`}
+          >
             Vaayu
           </span>
-          <span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-stone">
+          <span
+            className={`mt-1 block font-mono uppercase tracking-[0.22em] text-stone ${
+              size === "lg" ? "text-xs" : "text-[11px]"
+            }`}
+          >
             Workspace
           </span>
         </span>

@@ -22,6 +22,13 @@
       "when": 1788695040332,
       "tag": "0002_drop-must-change-password",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788709655460,
+      "tag": "0003_nosy_storm",
+      "breakpoints": true
     }
   ]
 }

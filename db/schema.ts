@@ -38,3 +38,27 @@ export const checkpoints = pgTable("checkpoints", {
 
 export type Checkpoint = typeof checkpoints.$inferSelect;
 export type NewCheckpoint = typeof checkpoints.$inferInsert;
+
+export const projects = pgTable("projects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  codebaseDriveId: text("codebase_drive_id").notNull(),
+  codebaseFileName: text("codebase_file_name").notNull(),
+  codebaseFileSize: text("codebase_file_size").notNull(),
+  previewDriveId: text("preview_drive_id"),
+  previewFileName: text("preview_file_name"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+

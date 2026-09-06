@@ -77,9 +77,9 @@ export const SECTIONS: Section[] = [
     wordmark: "Projects",
     tagline: "Ship code as packages, not threads.",
     blurb:
-      "Publish described, previewable project bundles the team can grab.",
-    phase: "Phase 2b · Project packages",
-    badge: { text: "Phase 2b", tone: "new" },
+      "Publish described, previewable project bundles backed by Google Drive.",
+    phase: "Phase 2b · Live storage",
+    badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#ff5530] via-[#f9603a] to-[#ea5ec1]",
     accent: "#ff5530",
@@ -87,9 +87,9 @@ export const SECTIONS: Section[] = [
     accentSoftBg: "bg-[#ffe9e1]",
     icon: (p) => <BoxIcon {...p} />,
     planned: [
-      "Upload form: name, description, tags, preview image + zip bundle",
-      "Browse cards with previews, uploader and one-click download",
-      "Versioned snapshots per project — no Git required",
+      "Upload form: title, description, preview image + compressed bundle",
+      "Interactive cards with live image lightbox and one-click download",
+      "Direct Google Drive cloud backend with zero credential exposure",
     ],
   },
   {
