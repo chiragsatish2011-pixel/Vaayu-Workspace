@@ -16,12 +16,18 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // idle → submitting (checking credentials) → navigating (dashboard
+  // loading). The button stays busy through navigation so the handoff to
+  // the dashboard never looks stuck on an idle form.
+  const [phase, setPhase] = useState<"idle" | "submitting" | "navigating">(
+    "idle"
+  );
+  const busy = phase !== "idle";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setPhase("submitting");
     try {
       const res = await signIn("credentials", {
         email: email.trim(),
@@ -30,18 +36,21 @@ export default function SignInPage() {
       });
       if (res?.error) {
         setError("Invalid email or password.");
+        setPhase("idle");
       } else if (res?.ok) {
         // Login goes straight to the dashboard — only admins manage
         // credentials, so there is no password step after sign-in.
+        // Keep the button busy until the dashboard unmounts this page.
+        setPhase("navigating");
         router.push("/");
         router.refresh();
       } else {
         setError("Could not sign in. Please try again.");
+        setPhase("idle");
       }
     } catch {
       setError("Could not sign in. Please try again.");
-    } finally {
-      setLoading(false);
+      setPhase("idle");
     }
   }
 
@@ -63,6 +72,7 @@ export default function SignInPage() {
           type="email"
           required
           autoComplete="email"
+          disabled={busy}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@team.com"
@@ -72,14 +82,19 @@ export default function SignInPage() {
           type="password"
           required
           autoComplete="current-password"
+          disabled={busy}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
         />
         {error && <AuthError message={error} />}
         <div className="pt-1">
-          <AuthSubmit loading={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+          <AuthSubmit loading={busy}>
+            {phase === "navigating"
+              ? "Opening dashboard…"
+              : phase === "submitting"
+                ? "Signing in…"
+                : "Sign in"}
           </AuthSubmit>
         </div>
       </form>
