@@ -20,6 +20,7 @@ export interface ActiveUser {
   id: string;
   email: string;
   role: "admin" | "member";
+  name: string | null;
 }
 
 /**
@@ -58,6 +59,7 @@ export async function requireActiveSession(): Promise<ActiveUser> {
           id: users.id,
           email: users.email,
           role: users.role,
+          name: users.name,
         })
         .from(users)
         .where(eq(users.id, session.user.id))
@@ -71,7 +73,7 @@ export async function requireActiveSession(): Promise<ActiveUser> {
 
   const user = rows[0];
   if (!user) redirect("/signin");
-  return { id: user.id, email: user.email, role: user.role };
+  return { id: user.id, email: user.email, role: user.role, name: user.name ?? null };
 }
 
 export async function requireAdmin(): Promise<ActiveUser> {
@@ -91,13 +93,13 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
   if (!session?.user?.id) return null;
   try {
     const rows = await db
-      .select({ id: users.id, email: users.email, role: users.role })
+      .select({ id: users.id, email: users.email, role: users.role, name: users.name })
       .from(users)
       .where(eq(users.id, session.user.id))
       .limit(1);
     const user = rows[0];
     if (!user) return null;
-    return { id: user.id, email: user.email, role: user.role };
+    return { id: user.id, email: user.email, role: user.role, name: user.name ?? null };
   } catch (err) {
     console.error("[session] api guard DB error:", err);
     return null;
