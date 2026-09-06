@@ -1,0 +1,105 @@
+import { Badge } from "@/components/Badge";
+import { MobileNav, NavLinks } from "@/components/MobileNav";
+import { SearchIcon } from "@/components/icons";
+import { SignOutButton } from "@/components/SignOutButton";
+import { Wordmark } from "@/components/Wordmark";
+
+export interface ShellUser {
+  email: string;
+  role: "admin" | "member";
+}
+
+/**
+ * Workspace shell — sticky sidebar (desktop) + topbar + mobile drawer.
+ * Server component; interactivity lives in <MobileNav/> + <SignOutButton/>.
+ */
+export function AppShell({
+  user,
+  active,
+  children,
+}: {
+  user: ShellUser;
+  active?: string;
+  children: React.ReactNode;
+}) {
+  const initial = (user.email?.[0] ?? "?").toUpperCase();
+  return (
+    <div className="flex min-h-screen bg-canvas text-ink">
+      {/* ── Sidebar (desktop) ── */}
+      <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-hairline-soft bg-canvas lg:flex">
+        <div className="px-5 pb-2 pt-5">
+          <Wordmark />
+          <p className="mt-4 px-1 font-mono text-[11px] uppercase tracking-[0.22em] text-stone">
+            Workspace
+          </p>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 py-2">
+          <NavLinks active={active} role={user.role} />
+        </nav>
+        <div className="border-t border-hairline-soft p-4">
+          <div className="mb-3 flex items-center gap-3 rounded-xl bg-fog px-3 py-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white">
+              {initial}
+            </span>
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-[13px] font-medium">
+                {user.email}
+              </span>
+              <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-steel">
+                {user.role}
+              </span>
+            </span>
+          </div>
+          <SignOutButton />
+        </div>
+      </aside>
+
+      {/* ── Main column ── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 border-b border-hairline-soft bg-canvas/85 backdrop-blur-md">
+          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+            <MobileNav active={active} role={user.role} />
+            <div className="lg:hidden">
+              <Wordmark compact />
+            </div>
+            {/* Search pill (decorative until Phase 2) */}
+            <div className="ml-auto hidden min-w-0 flex-1 max-w-xs items-center gap-2 rounded-lg border border-hairline bg-fog px-3 text-steel sm:flex">
+              <SearchIcon className="h-4 w-4 shrink-0" />
+              <input
+                disabled
+                placeholder="Search lands in Phase 2"
+                title="Global search arrives with Files in Phase 2"
+                className="h-9 w-full cursor-not-allowed bg-transparent text-sm outline-none placeholder:text-stone"
+              />
+              <kbd className="hidden shrink-0 rounded border border-hairline bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-stone md:block">
+                /
+              </kbd>
+            </div>
+            <div className="ml-auto flex items-center gap-2 sm:ml-0">
+              <Badge tone="live">
+                <span className="h-1.5 w-1.5 rounded-full bg-success-text" />
+                Phase 1
+              </Badge>
+              <span
+                title={`${user.email} · ${user.role}`}
+                className="grid h-9 w-9 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white"
+              >
+                {initial}
+              </span>
+            </div>
+          </div>
+        </header>
+        <div className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 sm:px-6">
+          {children}
+        </div>
+        <footer className="border-t border-hairline-soft">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-5 font-mono text-[11px] uppercase tracking-[0.18em] text-stone sm:px-6">
+            <span>Vaayu Workspace</span>
+            <span>Phase 01 · Live</span>
+            <span className="ml-auto">Vercel + Neon · Zero hardcoded secrets</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,186 @@
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { neon } from "@neondatabase/serverless";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/neon-http";
+
+/**
+ * First-run setup helpers (SERVER ONLY — never import from client code).
+ *
+ * Everything the /setup wizard needs: probe whether the workspace is ready,
+ * test a pasted database URL, create the tables, create the first (admin)
+ * account, and — in local dev only — persist DATABASE_URL to `.env.local`
+ * so the owner never touches a terminal or an env dashboard.
+ */
+
+export interface SetupStatus {
+  /** A DATABASE_URL string is configured (may still be unreachable). */
+  configured: boolean;
+  /** The configured URL actually connects. */
+  reachable: boolean;
+  /** The `users` table exists. */
+  tables: boolean;
+  /** At least one admin account exists. */
+  admin: boolean;
+  /** True on Vercel / production builds — file writes are refused there. */
+  isProduction: boolean;
+}
+
+export function isProduction(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+}
+
+function clientFor(url: string) {
+  return drizzle(
+    neon(url, {
+      fetchOptions: { signal: AbortSignal.timeout(12000) },
+    })
+  );
+}
+
+type Row = Record<string, unknown>;
+
+async function probeRows(
+  url: string,
+  statement: string
+): Promise<Row[] | null> {
+  try {
+    const res = (await clientFor(url).execute(sql.raw(statement))) as unknown;
+    // drizzle's execute() shape varies (bare rows array vs. full result
+    // object with `.rows`) depending on driver/bundler — accept both.
+    const rows = Array.isArray(res)
+      ? (res as Row[])
+      : ((res as { rows?: unknown }).rows ?? null);
+    return Array.isArray(rows) ? (rows as Row[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function testDatabaseUrl(url: string): Promise<boolean> {
+  const rows = await probeRows(url, "SELECT 1 AS ok");
+  return rows?.[0]?.ok === 1;
+}
+
+export async function getSetupStatus(): Promise<SetupStatus> {
+  const url = process.env.DATABASE_URL ?? null;
+  const status: SetupStatus = {
+    configured: !!url,
+    reachable: false,
+    tables: false,
+    admin: false,
+    isProduction: isProduction(),
+  };
+  if (!url) return status;
+
+  if (!(await testDatabaseUrl(url))) return status;
+  status.reachable = true;
+
+  const tbl = await probeRows(
+    url,
+    "SELECT to_regclass('public.users') AS tbl"
+  );
+  if (!tbl?.[0]?.tbl) return status;
+  status.tables = true;
+
+  const adm = await probeRows(
+    url,
+    "SELECT EXISTS (SELECT 1 FROM users WHERE role = 'admin') AS adm"
+  );
+  status.admin = adm?.[0]?.adm === true;
+  return status;
+}
+
+/** Mirrors drizzle/0000 + 0001, hardened to be safely re-runnable. */
+const EMBEDDED_BOOTSTRAP = [
+  `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
+  `DO $$ BEGIN CREATE TYPE "public"."role" AS ENUM('admin', 'member'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `CREATE TABLE IF NOT EXISTS "users" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"email" text NOT NULL,
+	"password_hash" text NOT NULL,
+	"role" "role" DEFAULT 'member' NOT NULL,
+	"must_change_password" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "users_email_unique" UNIQUE("email")
+);`,
+];
+
+async function loadBootstrapStatements(): Promise<string[]> {
+  // Apply every migration file in order, so fresh wizard databases always
+  // end up on the current schema even as new migrations are added.
+  try {
+    const dir = path.join(process.cwd(), "drizzle");
+    const files = (await readdir(dir))
+      .filter((f) => /^\d+_.*\.sql$/.test(f))
+      .sort();
+    const parts: string[] = [];
+    for (const f of files) {
+      const content = await readFile(path.join(dir, f), "utf8");
+      for (const s of content.split("--> statement-breakpoint")) {
+        const stmt = s.trim();
+        if (stmt) parts.push(stmt);
+      }
+    }
+    if (parts.length > 0) return parts;
+  } catch {
+    /* files not bundled (e.g. serverless) — fall through to embedded copy */
+  }
+  return EMBEDDED_BOOTSTRAP;
+}
+
+/**
+ * Create the tables. Refuses when they already exist (idempotent guard),
+ * so hitting this twice — or by accident — can never wipe data.
+ */
+export async function runBootstrap(
+  url: string
+): Promise<{ applied: boolean; already: boolean }> {
+  const tbl = await probeRows(
+    url,
+    "SELECT to_regclass('public.users') AS tbl"
+  );
+  if (tbl?.[0]?.tbl) return { applied: false, already: true };
+
+  const db = clientFor(url);
+  for (const stmt of await loadBootstrapStatements()) {
+    await db.execute(sql.raw(stmt));
+  }
+  return { applied: true, already: false };
+}
+
+function escapeEnvValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Persist keys to `.env.local` (LOCAL DEV ONLY — refused in production,
+ * where env vars belong in the Vercel dashboard). Next.js reloads
+ * `.env.local` automatically, so the wizard just polls status afterwards.
+ */
+export async function saveDevEnv(
+  vars: Record<string, string>
+): Promise<void> {
+  if (isProduction()) {
+    throw new Error(
+      "Cannot write env files in production. Set variables in the Vercel dashboard instead."
+    );
+  }
+  const file = path.join(process.cwd(), ".env.local");
+  let content = "";
+  try {
+    content = await readFile(file, "utf8");
+  } catch {
+    content =
+      "# Vaayu Workspace · local dev (written by the /setup wizard)\n";
+  }
+  if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+  for (const [key, value] of Object.entries(vars)) {
+    const line = `${key}=${escapeEnvValue(value)}`;
+    const re = new RegExp(`^${key}=.*$`, "m");
+    content = re.test(content)
+      ? content.replace(re, line)
+      : `${content}${line}\n`;
+  }
+  await writeFile(file, content, "utf8");
+}
