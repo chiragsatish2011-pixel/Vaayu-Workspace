@@ -74,7 +74,6 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             email: user.email,
             role: user.role,
-            name: user.name ?? null,
           };
         } catch (err) {
           // Infrastructure failure (DB/env down) — NOT bad credentials.
@@ -93,7 +92,6 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        token.name = user.name;
       }
       return token;
     },
@@ -101,7 +99,6 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = (token.id as string) ?? token.sub ?? "";
         session.user.role = (token.role as "admin" | "member") ?? "member";
-        session.user.name = token.name as string | null | undefined;
       }
       return session;
     },
