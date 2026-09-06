@@ -3,6 +3,7 @@ import { Geist_Mono } from "next/font/google";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -37,6 +38,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-canvas font-sans text-ink">
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
