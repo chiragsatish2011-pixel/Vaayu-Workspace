@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/Wordmark";
 export interface ShellUser {
   email: string;
   role: "admin" | "member";
+  name?: string | null;
 }
 
 /**
@@ -22,7 +23,8 @@ export function AppShell({
   active?: string;
   children: React.ReactNode;
 }) {
-  const initial = (user.email?.[0] ?? "?").toUpperCase();
+  const displayName = user.name?.trim() || null;
+  const initial = ((displayName?.[0] || user.email?.[0]) ?? "?").toUpperCase();
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
       {/* ── Sidebar (desktop) ── */}
@@ -43,8 +45,13 @@ export function AppShell({
             </span>
             <span className="min-w-0 flex-1 leading-tight">
               <span className="block truncate text-[13px] font-medium">
-                {user.email}
+                {displayName ?? user.email}
               </span>
+              {displayName && (
+                <span className="block truncate text-[11px] text-stone">
+                  {user.email}
+                </span>
+              )}
               <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-steel">
                 {user.role}
               </span>
@@ -81,7 +88,7 @@ export function AppShell({
                 Phase 1
               </Badge>
               <span
-                title={`${user.email} · ${user.role}`}
+                title={`${displayName ? `${displayName} (${user.email})` : user.email} · ${user.role}`}
                 className="grid h-9 w-9 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white"
               >
                 {initial}
