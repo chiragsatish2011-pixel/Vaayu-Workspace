@@ -22,21 +22,48 @@ export interface ActiveUser {
   role: "admin" | "member";
 }
 
+/**
+ * Race a promise against a timeout. Used by the guards so a hung database
+ * fails closed (redirect to /signin) instead of hanging the navigation
+ * forever with no feedback.
+ */
+function withGuardTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`guard DB read timed out after ${ms}ms`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export async function requireActiveSession(): Promise<ActiveUser> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/signin");
 
   let rows;
   try {
-    rows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-      })
-      .from(users)
-      .where(eq(users.id, session.user.id))
-      .limit(1);
+    rows = await withGuardTimeout(
+      db
+        .select({
+          id: users.id,
+          email: users.email,
+          role: users.role,
+        })
+        .from(users)
+        .where(eq(users.id, session.user.id))
+        .limit(1),
+      15000
+    );
   } catch (err) {
     console.error("[session] failed to load user for guard:", err);
     redirect("/signin");

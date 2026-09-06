@@ -69,14 +69,20 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
+          console.log(`[auth][authorize] login ok (${email})`);
           return {
             id: user.id,
             email: user.email,
             role: user.role,
           };
         } catch (err) {
+          // Infrastructure failure (DB/env down) — NOT bad credentials.
+          // Re-throw an opaque code so the sign-in UI can tell "server
+          // broken" apart from "wrong email/password" (both unknown-email
+          // and wrong-password above return null → CredentialsSignin, so
+          // no account enumeration). Full details stay in server logs.
           console.error(`[auth][authorize] login error for (${email}):`, err);
-          return null;
+          throw new Error("ServiceUnavailable");
         }
       },
     }),
