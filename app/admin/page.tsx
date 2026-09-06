@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
@@ -16,6 +17,12 @@ import { requireAdmin } from "@/lib/session";
 export default async function AdminPage() {
   const user = await requireAdmin();
 
+  const isDriveConfigured = Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_DRIVE_REFRESH_TOKEN
+  );
+
   const allUsers = await db
     .select({
       id: users.id,
@@ -29,15 +36,28 @@ export default async function AdminPage() {
   return (
     <AppShell user={{ email: user.email, role: user.role }} active="/admin">
       <section className="pt-10 sm:pt-14">
-        <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">
-          Admin · team access
-        </p>
-        <h1
-          className="mt-3 max-w-2xl animate-fade-up font-display text-4xl font-bold leading-[1.02] tracking-[-0.02em] sm:text-5xl"
-          style={{ animationDelay: "90ms" }}
-        >
-          Manage accounts.
-        </h1>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">
+              Admin · team access
+            </p>
+            <h1
+              className="mt-3 max-w-2xl animate-fade-up font-display text-4xl font-bold leading-[1.02] tracking-[-0.02em] sm:text-5xl"
+              style={{ animationDelay: "90ms" }}
+            >
+              Manage accounts.
+            </h1>
+          </div>
+          <Link
+            href="/admin/drive-setup"
+            className="animate-fade-up inline-flex items-center gap-2.5 rounded-2xl border border-hairline bg-canvas px-5 py-3.5 text-xs font-mono uppercase tracking-wider text-ink shadow-sm hover:bg-fog transition-colors"
+          >
+            <span>Google Drive Storage</span>
+            <Badge tone={isDriveConfigured ? "live" : "phase"}>
+              {isDriveConfigured ? "Configured" : "Setup Required"}
+            </Badge>
+          </Link>
+        </div>
         <p
           className="mt-4 max-w-xl animate-fade-up text-[15px] leading-relaxed text-steel"
           style={{ animationDelay: "160ms" }}
