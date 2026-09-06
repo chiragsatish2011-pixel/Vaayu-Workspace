@@ -121,7 +121,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
   return status;
 }
 
-/** Mirrors drizzle/0000 + 0001, hardened to be safely re-runnable. */
+/** Mirrors drizzle/0000 + 0001 + 0003, hardened to be safely re-runnable. */
 const EMBEDDED_BOOTSTRAP = [
   `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
   `DO $$ BEGIN CREATE TYPE "public"."role" AS ENUM('admin', 'member'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
@@ -132,6 +132,12 @@ const EMBEDDED_BOOTSTRAP = [
 	"role" "role" DEFAULT 'member' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_unique" UNIQUE("email")
+);`,
+  `CREATE TABLE IF NOT EXISTS "checkpoints" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL REFERENCES "public"."users"("id") ON DELETE cascade,
+	"note" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );`,
 ];
 
