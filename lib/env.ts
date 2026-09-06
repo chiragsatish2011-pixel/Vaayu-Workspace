@@ -48,6 +48,13 @@ export function requireDatabaseUrl(): string {
 
 export function requireNextAuthSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET;
+  // TEMPORARY DIAGNOSTIC for the Vercel NO_SECRET investigation — logs
+  // presence only (never the value). REMOVE after confirming in Vercel
+  // Function logs whether the Node runtime sees the variable. Expected:
+  //   [env][node] NEXTAUTH_SECRET present: true
+  console.log(
+    `[env][node] NEXTAUTH_SECRET present: ${!isMissing(secret)}`
+  );
   if (isMissing(secret)) {
     if (isBuildPhase()) {
       // Long placeholder — only to let `next build` collect routes.

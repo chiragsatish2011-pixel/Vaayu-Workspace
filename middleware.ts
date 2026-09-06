@@ -9,11 +9,23 @@ import type { NextRequest } from "next/server";
  * Runs on the Edge as a short-lived check (reads the JWT, no DB call) —
  * fully compatible with Vercel serverless.
  *
- * Fail-fast: for protected routes, a missing NEXTAUTH_SECRET / NEXTAUTH_URL
- * throws a loud, named error instead of a generic 500. Public paths
- * (/signin, /setup, /api/auth/*, /api/setup/*) intentionally skip the
- * check so the first-run wizard works before env is set. Build phase
- * (`NEXT_PHASE`) also skips, so `next build` succeeds without live env.
+ * NOTE on env checks: this file runs on the Edge Runtime (all of
+ * `middleware.ts` does — no `runtime` export needed). The Edge code ships
+ * as a prebuilt bundle (`server/edge/chunks/...`, see
+ * `middleware-manifest.json`), and its `process.env` snapshot is coupled
+ * to the deployment's BUILD — e.g. redeploying with a cached/stale build,
+ * or adding a variable in the dashboard after the Edge bundle was built,
+ * can leave Edge seeing a variable as missing even though the dashboard
+ * lists it and Node serverless functions (which read env live per
+ * invocation) see it fine. A `throw` here therefore bricks EVERY protected
+ * request on an env-visibility problem that isn't real. So Edge NEVER
+ * hard-fails on env: it logs loudly and lets the request through to the
+ * Node layer, where `lib/auth.ts` (`requireNextAuthSecret`) enforces the
+ * same variables with a live runtime read — that is also where NextAuth
+ * actually consumes the secret. Public paths (/signin, /setup,
+ * /api/auth/*, /api/setup/*) skip even the logging so the first-run
+ * wizard works before env is set. Build phase (`NEXT_PHASE`) also skips,
+ * so `next build` succeeds without live env.
  */
 
 const protectedAuth = withAuth({
@@ -45,16 +57,27 @@ export default function middleware(req: NextRequest, ...rest: unknown[]) {
     return (protectedAuth as any)(req, ...rest);
   }
   if (!isBuildPhase()) {
-    const secret = process.env.NEXTAUTH_SECRET;
-    if (!secret || secret.trim().length === 0) {
-      throw new Error(
-        "NEXTAUTH_SECRET is not set. Add it in Vercel's Environment Variables settings for this environment."
+    // TEMPORARY DIAGNOSTIC for the Vercel NO_SECRET investigation — logs
+    // presence only (never the value). REMOVE after confirming in Vercel
+    // Logs whether Edge sees the variable. Expected on a healthy deploy:
+    //   [env][edge] NEXTAUTH_SECRET present: true
+    // If Edge says false while Node (see lib/env.ts) says true, the Edge
+    // bundle is stale (rebuild without build cache) — not a code bug.
+    const edgeSecret = process.env.NEXTAUTH_SECRET;
+    console.log(
+      `[env][edge] NEXTAUTH_SECRET present: ${!!edgeSecret && edgeSecret.trim().length > 0}`
+    );
+    // Deliberately NON-blocking: see the header comment for why Edge must
+    // not throw on env. Enforcement happens in Node (lib/auth.ts).
+    if (!edgeSecret || edgeSecret.trim().length === 0) {
+      console.error(
+        "[env][edge] NEXTAUTH_SECRET is not set. Add it in Vercel's Environment Variables settings for this environment."
       );
     }
-    const url = process.env.NEXTAUTH_URL;
-    if (!url || url.trim().length === 0) {
-      throw new Error(
-        "NEXTAUTH_URL is not set. Add it in Vercel's Environment Variables settings for this environment."
+    const edgeUrl = process.env.NEXTAUTH_URL;
+    if (!edgeUrl || edgeUrl.trim().length === 0) {
+      console.error(
+        "[env][edge] NEXTAUTH_URL is not set. Add it in Vercel's Environment Variables settings for this environment."
       );
     }
   }
