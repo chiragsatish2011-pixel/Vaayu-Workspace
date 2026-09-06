@@ -7,9 +7,13 @@ import { getSetupStatus } from "@/lib/setup";
 
 /**
  * POST /api/setup/owner { email, password } — create the FIRST account as
- * admin. Refuses when an admin already exists, so it can never hijack a
- * live workspace. After this, all further accounts are created by admins
- * via /admin — there is no public registration.
+ * admin, with must_change_password = false (owner chose it directly).
+ *
+ * ONE-TIME SETUP GATE — this is NOT a public sign-up path. It refuses when
+ * ANY user already exists (COUNT(*) > 0 via getSetupStatus().hasUsers), so
+ * it can never hijack a live workspace or become open registration. After
+ * this, all further accounts are created by admins via /admin — there is no
+ * public registration.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -52,7 +56,9 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-    if (status.admin) {
+    // Self-disable: ANY existing user locks the wizard permanently.
+    const alreadySetup = status.hasUsers || status.admin;
+    if (alreadySetup) {
       return NextResponse.json(
         { error: "An owner already exists. Sign in instead." },
         { status: 403 }
@@ -74,7 +80,7 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(password, 12);
     const inserted = await db
       .insert(users)
-      .values({ email, passwordHash, role: "admin" })
+      .values({ email, passwordHash, role: "admin", mustChangePassword: false })
       .returning({ id: users.id, email: users.email });
 
     console.log(`[setup/owner] owner account created (${email})`);

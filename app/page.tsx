@@ -31,9 +31,12 @@ const marqueeItems = [
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  // Fresh workspace (no DB / tables / owner yet) → send the owner to setup.
+  // Fresh workspace (no DB / tables / users yet) → send the owner to setup.
+  // Uses hasUsers (COUNT(*) > 0), not just admin, so setup stays locked even
+  // if only members remain.
   const setup = await getSetupStatus();
-  if (!setup.reachable || !setup.tables || !setup.admin) redirect("/setup");
+  const setupDone = setup.hasUsers || setup.admin;
+  if (!setup.reachable || !setup.tables || !setupDone) redirect("/setup");
 
   // Signed in, password fresh (must-change users bounce to /set-password).
   const user = await requireActiveSession();

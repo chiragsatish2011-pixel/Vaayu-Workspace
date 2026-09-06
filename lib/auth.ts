@@ -4,6 +4,21 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { requireNextAuthSecret, requireNextAuthUrl } from "@/lib/env";
+
+/**
+ * Fail fast if auth env is missing (except during `next build`, where a
+ * placeholder keeps route collection working). Without this, a missing
+ * NEXTAUTH_SECRET / NEXTAUTH_URL surfaces later as a generic 500 or a
+ * confusing JWT error — this makes it impossible to miss.
+ *
+ * NOTE: /setup never imports this module, so the first-run wizard still
+ * works before these vars are set.
+ */
+const nextAuthSecret = requireNextAuthSecret();
+// Validated for its side effect (throws if missing) — NextAuth reads
+// NEXTAUTH_URL from process.env internally.
+requireNextAuthUrl();
 
 /**
  * NextAuth configuration — Credentials provider (email + password).
@@ -19,7 +34,7 @@ import { users } from "@/db/schema";
  */
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: nextAuthSecret,
   pages: { signIn: "/signin" },
   providers: [
     CredentialsProvider({

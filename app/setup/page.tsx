@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   AuthError,
@@ -10,21 +11,36 @@ import {
 import { Wordmark } from "@/components/Wordmark";
 import { CheckIcon } from "@/components/icons";
 
+/**
+ * ONE-TIME SETUP WIZARD — this is NOT a public sign-up path.
+ * It exists only to bootstrap the FIRST account (admin) on a fresh database
+ * with zero users. The API (/api/setup/owner) refuses once ANY user exists,
+ * and this page redirects to /signin as soon as hasUsers/admin is true —
+ * even if someone knows the /setup URL — so it can never hijack a live
+ * workspace or become open registration.
+ */
+
 interface Status {
   configured: boolean;
   reachable: boolean;
   tables: boolean;
   admin: boolean;
-  inviteConfigured: boolean;
+  hasUsers?: boolean;
+  inviteConfigured?: boolean;
   isProduction: boolean;
 }
 
 type Step = 1 | 2 | 3 | 4;
 
+function isSetupDone(s: Status): boolean {
+  // Prefer hasUsers (COUNT(*) > 0); fall back to admin for old responses.
+  return (s.hasUsers ?? s.admin) === true || s.admin === true;
+}
+
 function stepFromStatus(s: Status): Step {
   if (!s.reachable) return 1;
   if (!s.tables) return 2;
-  if (!s.admin) return 3;
+  if (!isSetupDone(s)) return 3;
   return 4;
 }
 
@@ -49,6 +65,7 @@ const steps: { n: Step; label: string }[] = [
 ];
 
 export default function SetupPage() {
+  const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dbUrl, setDbUrl] = useState("");
@@ -76,6 +93,16 @@ export default function SetupPage() {
     });
     return () => cancelAnimationFrame(raf);
   }, [refresh]);
+
+  // Self-disable: once ANY user exists, this route is dead — bounce to
+  // sign-in even if someone navigates here directly. (The API enforces the
+  // same rule server-side, so this is UX + defense in depth.)
+  // Small delay so a just-finished owner still sees the success screen.
+  useEffect(() => {
+    if (!status || !isSetupDone(status)) return;
+    const t = setTimeout(() => router.replace("/signin"), 2500);
+    return () => clearTimeout(t);
+  }, [status, router]);
 
   /** Poll status until reachable (dev server restarts itself after saving). */
   async function waitForReachable(tries = 12): Promise<Status | null> {
@@ -425,6 +452,9 @@ export default function SetupPage() {
                   Database connected, tables created, owner account ready.
                   Sign in, then create member accounts from the Admin page —
                   there is no public registration.
+                </p>
+                <p className="mx-auto mt-3 max-w-md font-mono text-[11px] uppercase tracking-[0.18em] text-stone">
+                  Setup is now locked — redirecting to sign-in…
                 </p>
                 <Link
                   href="/signin"

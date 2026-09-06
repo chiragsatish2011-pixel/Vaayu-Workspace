@@ -79,6 +79,12 @@ export default async function AdminPage() {
                     <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.16em] text-steel">
                       {u.role}
                       {u.mustChangePassword ? " · password reset pending" : ""}
+                      {" · "}
+                      {new Date(u.createdAt).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </span>
                   </span>
                   <Badge tone={u.role === "admin" ? "phase" : "live"}>

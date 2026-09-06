@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ConsoleMock } from "@/components/ConsoleMock";
 import { Wordmark } from "@/components/Wordmark";
 
@@ -52,10 +53,22 @@ export function AuthLayout({
 
         {/* Brand panel side */}
         <div className="relative hidden overflow-hidden bg-pine-deep lg:block">
+          {/* Fallback gradient (visible if the hero image fails to load) */}
           <div
             aria-hidden
             className="absolute inset-0 bg-gradient-to-br from-pine via-pine-deep to-navy"
           />
+          {/* Hero background image — optimized via next/image (cover, centered) */}
+          <Image
+            src="/backgrounds/vaayu-hero-bg.jpg"
+            alt=""
+            fill
+            priority
+            sizes="(max-width: 1024px) 0vw, 55vw"
+            className="object-cover object-center"
+          />
+          {/* Dark overlay (35%) for text contrast over bright streaks */}
+          <div aria-hidden className="absolute inset-0 bg-slate-950/35" />
           <div
             aria-hidden
             className="dot-grid-light absolute inset-0 opacity-60"

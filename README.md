@@ -44,16 +44,33 @@ Synthesized from `DESIGN-cohere.md`, `DESIGN-minimax.md` and
 | `NEXTAUTH_SECRET` | Signs JWT sessions (`openssl rand -base64 32`) | any strong random string |
 | `NEXTAUTH_URL` | Public app URL (callbacks/redirects) | `http://localhost:3000` locally, `https://YOUR-APP.vercel.app` in prod |
 
-See `.env.example` for details. Every secret comes from the environment —
-there are zero hardcoded secrets in the codebase. That's all three — there
-are no other variables to set.
+That's all three — there are no other variables to set. Every secret comes
+from the environment — there are zero hardcoded secrets in the codebase.
+
+They must be set in Vercel's dashboard (**Project Settings → Environment
+Variables**) separately from any local `.env` file, for **Production**,
+**Preview**, and **Development**. A local `.env.local` never deploys —
+if a variable is missing in Vercel, production breaks even when local dev
+works.
+
+Missing variables fail fast with a loud error naming the exact variable
+(checked on first database/auth access, via `lib/env.ts` — `next build`
+still succeeds without them so CI stays green):
+
+- `DATABASE_URL is not set. Add it in Vercel's Environment Variables settings for this environment.`
+- `NEXTAUTH_SECRET is not set. Add it in Vercel's Environment Variables settings for this environment.`
+- `NEXTAUTH_URL is not set. Add it in Vercel's Environment Variables settings for this environment.`
+
+The `/setup` wizard is the only flow that works without `DATABASE_URL`
+(step 1 collects it); everything else throws the above instead of failing
+later with a generic 500.
 
 ## Team-only access (no public registration)
 
 There is **no sign-up page**. Accounts come from exactly two places:
 
 - **First account:** the `/setup` wizard creates the owner as `admin`
-  (and refuses once an admin exists — it can never hijack a live workspace).
+  (and refuses once any user exists — it can never hijack a live workspace).
 - **Everyone else:** an admin creates them at **Admin → New account**
   (sidebar, admins only). New members get a temporary password shown
   **once** in a copy box, and must set their own password on first

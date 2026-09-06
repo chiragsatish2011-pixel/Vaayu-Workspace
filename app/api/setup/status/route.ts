@@ -13,6 +13,7 @@ export async function GET() {
         reachable: false,
         tables: false,
         admin: false,
+        hasUsers: false,
         isProduction: process.env.NODE_ENV === "production",
       },
       { status: 500 }

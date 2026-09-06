@@ -22,6 +22,12 @@ export interface SetupStatus {
   tables: boolean;
   /** At least one admin account exists. */
   admin: boolean;
+  /**
+   * True once ANY user exists (SELECT COUNT(*) FROM users > 0).
+   * This is the self-disable switch for the one-time /setup wizard —
+   * see getSetupStatus() below.
+   */
+  hasUsers: boolean;
   /** True on Vercel / production builds — file writes are refused there. */
   isProduction: boolean;
 }
@@ -69,6 +75,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
     reachable: false,
     tables: false,
     admin: false,
+    hasUsers: false,
     isProduction: isProduction(),
   };
   if (!url) return status;
@@ -83,11 +90,34 @@ export async function getSetupStatus(): Promise<SetupStatus> {
   if (!tbl?.[0]?.tbl) return status;
   status.tables = true;
 
+  // ONE-TIME SETUP GATE — this is NOT a public sign-up path.
+  // The /setup wizard exists only to bootstrap the very first account on a
+  // fresh database (zero users). The moment ANY user exists (COUNT(*) > 0),
+  // /setup must self-disable permanently and redirect to /signin — even if
+  // someone knows the URL — so it can never hijack a live workspace or be
+  // abused as open registration. We check COUNT(*) (any user), not just
+  // admins, so deleting the admin or leaving only members still keeps setup
+  // locked. `admin` is kept separately for dashboard UX (owner exists?).
+  const cnt = await probeRows(url, "SELECT COUNT(*) AS cnt FROM users");
+  const rawCnt = cnt?.[0]?.cnt;
+  const count =
+    typeof rawCnt === "number"
+      ? rawCnt
+      : typeof rawCnt === "string"
+        ? parseInt(rawCnt, 10)
+        : 0;
+  status.hasUsers = Number.isFinite(count) && count > 0;
+
   const adm = await probeRows(
     url,
     "SELECT EXISTS (SELECT 1 FROM users WHERE role = 'admin') AS adm"
   );
   status.admin = adm?.[0]?.adm === true;
+  // Belt-and-braces: if any user exists but the admin check misfires,
+  // treat setup as done — never leave the wizard open on a live DB.
+  if (status.hasUsers) {
+    // `admin` stays as queried for display; `hasUsers` is the lock.
+  }
   return status;
 }
 
