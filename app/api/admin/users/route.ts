@@ -7,15 +7,59 @@ import { users } from "@/db/schema";
 import { authOptions } from "@/lib/auth";
 
 /**
- * POST /api/admin/users { email, password } — admin creates a member account.
+ * Admin-only user management. All three handlers require a signed-in
+ * caller with role "admin" (401/403 otherwise) — users have NO
+ * self-service credential UI anywhere; every password below is set by an
+ * admin and bcrypt-hashed (cost 12) before storing. Plaintext passwords
+ * are never stored, never logged, and never returned.
  *
- * - Caller must be signed in with role "admin" (401/403 otherwise).
- * - Password is bcrypt-hashed (cost 12) before storing; the plaintext is
- *   never stored, never logged, and never returned — the admin's browser
- *   already holds it and shows it once from its own state.
- * - New accounts get role "member" + must_change_password = true.
- * - Stateless serverless handler: auth check, validate, one lookup, one insert.
+ * - POST   /api/admin/users { email, password } — create a member account.
+ * - PATCH  /api/admin/users { id, newPassword } — set a user's password.
+ *   No "current password" needed: this is the admin acting on someone
+ *   else's account, not a self-service change.
+ * - DELETE /api/admin/users { id } — delete a user's account. Admins
+ *   cannot delete their own account (that would lock the workspace).
+ *
+ * Stateless serverless handlers: auth check, validate, lookup, write.
  */
+
+interface Caller {
+  id: string;
+  email: string;
+}
+
+/** Returns the admin caller, or a NextResponse error to return directly. */
+async function requireCallerAdmin(): Promise<Caller | NextResponse> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    console.error("[admin/users] denied: unauthenticated attempt");
+    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+  const callers = await db
+    .select({ id: users.id, role: users.role, email: users.email })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+  const caller = callers[0];
+  if (!caller || caller.role !== "admin") {
+    console.error(
+      `[admin/users] denied: non-admin attempt by (${caller?.email ?? session.user.email ?? "unknown"})`
+    );
+    return NextResponse.json(
+      { error: "Admin access required." },
+      { status: 403 }
+    );
+  }
+  return { id: caller.id, email: caller.email };
+}
+
+function isValidEmail(email: unknown): email is string {
+  return (
+    typeof email === "string" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.toLowerCase().trim())
+  );
+}
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -27,15 +71,13 @@ export async function POST(req: Request) {
     email?: unknown;
     password?: unknown;
   };
-  const email =
-    typeof rawEmail === "string" ? rawEmail.toLowerCase().trim() : "";
-
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(rawEmail)) {
     return NextResponse.json(
       { error: "A valid email address is required." },
       { status: 400 }
     );
   }
+  const email = rawEmail.toLowerCase().trim();
   if (typeof password !== "string" || password.length < 8) {
     return NextResponse.json(
       { error: "Password must be at least 8 characters." },
@@ -44,26 +86,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.error("[admin/users] denied: unauthenticated create attempt");
-      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-    }
-    const callers = await db
-      .select({ role: users.role, email: users.email })
-      .from(users)
-      .where(eq(users.id, session.user.id))
-      .limit(1);
-    const caller = callers[0];
-    if (!caller || caller.role !== "admin") {
-      console.error(
-        `[admin/users] denied: non-admin create attempt by (${caller?.email ?? session.user.email ?? "unknown"})`
-      );
-      return NextResponse.json(
-        { error: "Admin access required." },
-        { status: 403 }
-      );
-    }
+    const caller = await requireCallerAdmin();
+    if (caller instanceof NextResponse) return caller;
 
     const existing = await db
       .select({ id: users.id })
@@ -83,7 +107,7 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(password, 12);
     const inserted = await db
       .insert(users)
-      .values({ email, passwordHash, role: "member", mustChangePassword: true })
+      .values({ email, passwordHash, role: "member" })
       .returning({ id: users.id, email: users.email });
 
     console.log(
@@ -97,6 +121,117 @@ export async function POST(req: Request) {
     console.error(`[admin/users] unexpected error creating (${email}):`, err);
     return NextResponse.json(
       { error: "Couldn't create the account. Please try again." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+  const { id, newPassword } = body as { id?: unknown; newPassword?: unknown };
+  if (typeof id !== "string" || !id) {
+    return NextResponse.json(
+      { error: "A user id is required." },
+      { status: 400 }
+    );
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    return NextResponse.json(
+      { error: "New password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const caller = await requireCallerAdmin();
+    if (caller instanceof NextResponse) return caller;
+
+    const targets = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    const target = targets[0];
+    if (!target) {
+      return NextResponse.json(
+        { error: "No account found with that id." },
+        { status: 404 }
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db
+      .update(users)
+      .set({ passwordHash })
+      .where(eq(users.id, target.id));
+
+    console.log(
+      `[admin/users] password changed for (${target.email}) by admin (${caller.email})`
+    );
+    return NextResponse.json({ ok: true, email: target.email });
+  } catch (err) {
+    console.error("[admin/users] unexpected error changing password:", err);
+    return NextResponse.json(
+      { error: "Couldn't change the password. Please try again." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+  const { id } = body as { id?: unknown };
+  if (typeof id !== "string" || !id) {
+    return NextResponse.json(
+      { error: "A user id is required." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const caller = await requireCallerAdmin();
+    if (caller instanceof NextResponse) return caller;
+
+    if (id === caller.id) {
+      return NextResponse.json(
+        { error: "You can't delete your own account." },
+        { status: 400 }
+      );
+    }
+
+    const targets = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    const target = targets[0];
+    if (!target) {
+      return NextResponse.json(
+        { error: "No account found with that id." },
+        { status: 404 }
+      );
+    }
+
+    await db.delete(users).where(eq(users.id, target.id));
+
+    console.log(
+      `[admin/users] account deleted (${target.email}) by admin (${caller.email})`
+    );
+    return NextResponse.json({ ok: true, email: target.email });
+  } catch (err) {
+    console.error("[admin/users] unexpected error deleting account:", err);
+    return NextResponse.json(
+      { error: "Couldn't delete the account. Please try again." },
       { status: 500 }
     );
   }

@@ -15,9 +15,10 @@ function generatePassword(): string {
 }
 
 /**
- * Admin "create account" form. The temporary password lives ONLY in this
+ * Admin "create account" form. The password lives ONLY in this
  * component's state: it is sent once over HTTPS for hashing, then shown
  * once in the copy box below. Never logged, never stored in plaintext.
+ * Only admins set passwords — users have no self-service password UI.
  */
 export function CreateAccountForm() {
   const [email, setEmail] = useState("");
@@ -88,7 +89,7 @@ export function CreateAccountForm() {
         />
         <div>
           <AuthField
-            label="Temporary password (min 8 characters)"
+            label="Password (min 8 characters)"
             type="text"
             required
             minLength={8}
@@ -146,7 +147,8 @@ export function CreateAccountForm() {
             </button>
           </div>
           <p className="mt-3 text-[13px] text-white/60">
-            They&apos;ll be asked to set their own password on first sign-in.
+            Share it with them privately — only admins can set or change
+            passwords.
           </p>
           <button
             type="button"

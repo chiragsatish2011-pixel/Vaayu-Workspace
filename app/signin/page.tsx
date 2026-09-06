@@ -1,6 +1,6 @@
 "use client";
 
-import { getSession, signIn } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -31,9 +31,9 @@ export default function SignInPage() {
       if (res?.error) {
         setError("Invalid email or password.");
       } else if (res?.ok) {
-        // Fresh session carries mustChangePassword — route accordingly.
-        const fresh = await getSession();
-        router.push(fresh?.user?.mustChangePassword ? "/set-password" : "/");
+        // Login goes straight to the dashboard — only admins manage
+        // credentials, so there is no password step after sign-in.
+        router.push("/");
         router.refresh();
       } else {
         setError("Could not sign in. Please try again.");

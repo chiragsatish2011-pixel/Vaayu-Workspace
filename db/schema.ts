@@ -1,5 +1,4 @@
 import {
-  boolean,
   pgEnum,
   pgTable,
   text,
@@ -14,12 +13,10 @@ export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
   // bcrypt hash of the user's password. NEVER store plaintext.
+  // Only admins set passwords (admin panel); users have no self-service
+  // password UI at all.
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull().default("member"),
-  // True when the account owner must pick their own password before using
-  // the workspace (accounts created by an admin start this way).
-  // Existing accounts default to false so nobody is locked out by migration.
-  mustChangePassword: boolean("must_change_password").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

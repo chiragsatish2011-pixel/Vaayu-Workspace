@@ -7,7 +7,7 @@ import { getSetupStatus } from "@/lib/setup";
 
 /**
  * POST /api/setup/owner { email, password } — create the FIRST account as
- * admin, with must_change_password = false (owner chose it directly).
+ * admin (owner chose the password directly).
  *
  * ONE-TIME SETUP GATE — this is NOT a public sign-up path. It refuses when
  * ANY user already exists (COUNT(*) > 0 via getSetupStatus().hasUsers), so
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(password, 12);
     const inserted = await db
       .insert(users)
-      .values({ email, passwordHash, role: "admin", mustChangePassword: false })
+      .values({ email, passwordHash, role: "admin" })
       .returning({ id: users.id, email: users.email });
 
     console.log(`[setup/owner] owner account created (${email})`);

@@ -3,15 +3,16 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { CreateAccountForm } from "@/components/CreateAccountForm";
 import { Reveal } from "@/components/Reveal";
+import { UserRowActions } from "@/components/UserRowActions";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/session";
 
-// Protected, per-user page — always render per request, never prerender
-// at build time (it reads the session + database on every load).
-export const dynamic = "force-dynamic";
-
-/** Admin-only page: create member accounts + see who has access. */
+/**
+ * Admin-only page: full control over all credentials. Admins create
+ * accounts, change any user's password, and delete accounts — users have
+ * no self-service password UI anywhere in the workspace.
+ */
 export default async function AdminPage() {
   const user = await requireAdmin();
 
@@ -20,7 +21,6 @@ export default async function AdminPage() {
       id: users.id,
       email: users.email,
       role: users.role,
-      mustChangePassword: users.mustChangePassword,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -36,15 +36,16 @@ export default async function AdminPage() {
           className="mt-3 max-w-2xl animate-fade-up font-display text-4xl font-bold leading-[1.02] tracking-[-0.02em] sm:text-5xl"
           style={{ animationDelay: "90ms" }}
         >
-          Create accounts.
+          Manage accounts.
         </h1>
         <p
           className="mt-4 max-w-xl animate-fade-up text-[15px] leading-relaxed text-steel"
           style={{ animationDelay: "160ms" }}
         >
-          New teammates join as members and must set their own password on
-          first sign-in. Share the temporary password privately — it&apos;s
-          shown once and never stored.
+          Only admins control credentials. Create accounts with a password
+          you choose, change any teammate&apos;s password anytime, or remove
+          accounts — share passwords privately, they&apos;re stored hashed
+          and never shown again.
         </p>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -68,7 +69,7 @@ export default async function AdminPage() {
               {allUsers.map((u) => (
                 <li
                   key={u.id}
-                  className="flex items-center gap-3 px-6 py-3.5"
+                  className="flex items-start gap-3 px-6 py-3.5"
                 >
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white">
                     {(u.email[0] ?? "?").toUpperCase()}
@@ -82,7 +83,6 @@ export default async function AdminPage() {
                     </span>
                     <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.16em] text-steel">
                       {u.role}
-                      {u.mustChangePassword ? " · password reset pending" : ""}
                       {" · "}
                       {new Date(u.createdAt).toLocaleDateString("en-US", {
                         year: "numeric",
@@ -90,10 +90,17 @@ export default async function AdminPage() {
                         day: "numeric",
                       })}
                     </span>
+                    <span className="mt-1 block">
+                      <Badge tone={u.role === "admin" ? "phase" : "live"}>
+                        {u.role}
+                      </Badge>
+                    </span>
                   </span>
-                  <Badge tone={u.role === "admin" ? "phase" : "live"}>
-                    {u.role}
-                  </Badge>
+                  <UserRowActions
+                    id={u.id}
+                    email={u.email}
+                    isSelf={u.email === user.email}
+                  />
                 </li>
               ))}
             </ul>

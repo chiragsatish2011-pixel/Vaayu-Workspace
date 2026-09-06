@@ -15,6 +15,13 @@
       "when": 1788677224773,
       "tag": "0001_needy_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788695040332,
+      "tag": "0002_drop-must-change-password",
+      "breakpoints": true
     }
   ]
 }

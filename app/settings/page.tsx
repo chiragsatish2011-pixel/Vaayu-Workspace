@@ -1,5 +1,4 @@
 import { AppShell } from "@/components/AppShell";
-import { PasswordForm } from "@/components/PasswordForm";
 import { Reveal } from "@/components/Reveal";
 import { requireActiveSession } from "@/lib/session";
 
@@ -7,7 +6,10 @@ import { requireActiveSession } from "@/lib/session";
 // at build time (it reads the session on every load).
 export const dynamic = "force-dynamic";
 
-/** Account settings — profile summary + voluntary password change. */
+/**
+ * Account settings — read-only profile summary. There is deliberately NO
+ * password UI here: only admins control credentials (see /admin).
+ */
 export default async function SettingsPage() {
   const user = await requireActiveSession();
 
@@ -37,24 +39,9 @@ export default async function SettingsPage() {
             </div>
           </div>
           <p className="mt-4 text-sm text-steel">
-            Role changes happen through your admin — everything else about
-            sign-in lives below.
+            Role and password changes happen through your admin — contact
+            them if you need anything updated on your account.
           </p>
-        </Reveal>
-
-        <Reveal
-          delay={120}
-          className="mt-5 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8"
-        >
-          <h2 className="font-display text-xl font-bold tracking-tight">
-            Change password
-          </h2>
-          <p className="mt-1 text-sm text-steel">
-            You&apos;ll need your current password to set a new one.
-          </p>
-          <div className="mt-5">
-            <PasswordForm email={user.email} />
-          </div>
         </Reveal>
       </section>
     </AppShell>

@@ -67,16 +67,32 @@ later with a generic 500.
 
 ## Team-only access (no public registration)
 
-There is **no sign-up page**. Accounts come from exactly two places:
+There is **no sign-up page**, and users have **no self-service password
+UI at all** — only admins control credentials:
 
-- **First account:** the `/setup` wizard creates the owner as `admin`
-  (and refuses once any user exists — it can never hijack a live workspace).
+- **First account:** seed it directly (see below), or use the `/setup`
+  wizard which creates the owner as `admin` (and refuses once any user
+  exists — it can never hijack a live workspace).
 - **Everyone else:** an admin creates them at **Admin → New account**
-  (sidebar, admins only). New members get a temporary password shown
-  **once** in a copy box, and must set their own password on first
-  sign-in (`must_change_password` is enforced on every page load).
-- Members change passwords anytime in **Settings → Change password**
-  (current password required).
+  (sidebar, admins only) with a password the admin types. The password
+  is shown **once** in a copy box — share it privately.
+- **Changes & removals:** on that same admin page, each team row has
+  **Change password** (new password, no current-password needed) and
+  **Delete** (admins can't delete their own account).
+- Members just sign in and land on the dashboard. **Settings** is a
+  read-only account summary — password help goes through the admin.
+
+## Seed the first admin
+
+```bash
+DATABASE_URL="postgresql://..." npm run db:seed
+# or with DATABASE_URL in .env.local: npm run db:seed
+```
+
+Creates (or updates to admin) `admin@vaayu.com` / `1234` — a
+**placeholder credential**. Change it immediately after signing in via
+**Admin → Change password** on your own row. Login lowercases emails,
+so `Admin@vaayu.com` works too.
 
 ## Run locally
 
@@ -91,13 +107,14 @@ tables, owner account — all in the browser. (Manual alternative: paste
 
 Then:
 
-1. Sign in at `/signin` with your owner account.
-2. As admin, create member accounts at **Admin → New account** — share each
-   temporary password privately; it's shown once and never stored.
-3. Members sign in and are forced to **Set your password** before anything
-   else; afterwards it's the dashboard (Files / Projects / Chat / Calls
-   placeholders) plus **Settings** for password changes.
-4. Sign out via the sidebar button.
+1. Seed the admin (`npm run db:seed`, see above) or run the `/setup`
+   wizard to create tables + owner.
+2. Sign in at `/signin` — you land directly on the dashboard.
+3. As admin, create member accounts at **Admin → New account** — share
+   each password privately; it's shown once and never stored.
+4. Members sign straight into the dashboard (Files / Projects / Chat /
+   Calls placeholders) plus read-only **Settings**.
+5. Sign out via the sidebar button.
 
 Verify hashing: check the `users` table — `password_hash` holds a `$2b$…`
 bcrypt hash, never the plaintext password.
@@ -106,22 +123,21 @@ bcrypt hash, never the plaintext password.
 
 ```
 app/
-  page.tsx                    dashboard (protected, must-change enforced)
+  page.tsx                    dashboard (protected)
   signin/page.tsx             sign-in (public, no registration links)
-  set-password/page.tsx       mandatory first-login password set (public w/ session)
-  settings/page.tsx           account settings + change password (protected)
-  admin/page.tsx              create member accounts + team list (admin only)
+  settings/page.tsx           read-only account summary (protected, no password UI)
+  admin/page.tsx              full credential control: create/change-password/delete (admin only)
   setup/page.tsx              first-run wizard: DB, tables, owner (public until done)
   files|projects|chat|calls/  "Coming soon" placeholders
   api/auth/[...nextauth]/     NextAuth handler (GET+POST)
-  api/admin/users/            admin-only account creation (bcrypt + must-change)
-  api/account/password/       change password (current required, clears flag)
+  api/admin/users/            admin-only create (POST) / change password (PATCH) / delete (DELETE), bcrypt
   api/setup/*/                wizard endpoints (status/database/migrate/owner)
-components/  AppShell, SectionMatrix, AuthLayout, ComingSoon, PasswordForm, …
-lib/auth.ts  NextAuth options (JWT + must-change flag, secure cookies)
+components/  AppShell, SectionMatrix, AuthLayout, ComingSoon, CreateAccountForm, UserRowActions, …
+lib/auth.ts  NextAuth options (JWT Sessions, secure cookies)
 lib/session.ts  requireActiveSession / requireAdmin route guards
 db/          schema.ts (users table) + index.ts (stateless Neon HTTP client)
-drizzle/     SQL migrations, incl. must_change_password (apply with db:migrate)
+scripts/     seed-admin.mjs (one-time first-admin bootstrap, run via db:seed)
+drizzle/     SQL migrations (apply with db:migrate)
 middleware.ts  withAuth route protection → redirects to /signin
 ```
 
@@ -161,22 +177,22 @@ open on Vercel.
 - `npm run db:generate` — regenerate SQL from `db/schema.ts`
 - `npm run db:migrate` — apply `drizzle/` migrations (needs `DATABASE_URL`)
 - `npm run db:push` — quick prototype sync (needs `DATABASE_URL`)
+- `npm run db:seed` — create/update the first admin (`admin@vaayu.com`, needs `DATABASE_URL`)
 
 ## Security notes
 
 - Passwords hashed with bcrypt (cost 12) via bcryptjs; plaintext never stored
-  or logged. Minimum password length 8 enforced server-side. Temporary
-  passwords are shown once in the admin UI and never touch logs or storage.
-- must-change-password is enforced server-side on every protected page load
-  (fresh DB read, no stale sessions); current password is always required
-  to change it.
+  or logged. Minimum password length 8 enforced server-side on the admin
+  panel (the one-time seed uses a placeholder that must be changed
+  immediately). Passwords shown in the admin UI appear once and never
+  touch logs or storage.
 - NextAuth JWT strategy with `NEXTAUTH_SECRET` from env; session cookie is
   `httpOnly` and `Secure` in production (`__Secure-` prefix).
 - `middleware.ts` guards all routes except `/signin`, `/setup`,
   `/api/auth/*`, `/api/setup/*`, and static assets. There is no public
   registration route at all.
 - Failures log with route context (`[auth][authorize]`, `[admin/users]`,
-  `[account/password]`, `[setup/*]`) — check Vercel → Project → Logs →
+  `[setup/*]`, `[seed-admin]`) — check Vercel → Project → Logs →
   Functions when production misbehaves.
 
 ## Deliberately out of scope (later phases)

@@ -38,7 +38,7 @@ export default async function DashboardPage() {
   const setupDone = setup.hasUsers || setup.admin;
   if (!setup.reachable || !setup.tables || !setupDone) redirect("/setup");
 
-  // Signed in, password fresh (must-change users bounce to /set-password).
+  // Signed in (guards redirect to /signin when there is no session).
   const user = await requireActiveSession();
 
   return (

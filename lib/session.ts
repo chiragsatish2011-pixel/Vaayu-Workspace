@@ -8,15 +8,12 @@ import { authOptions } from "@/lib/auth";
 /**
  * Server-side route guards (SERVER ONLY — uses next/headers + redirect).
  *
- * Every protected page calls one of these instead of raw getServerSession,
- * so the mandatory-password rule is enforced in one place with zero drift:
+ * Every protected page calls one of these instead of raw getServerSession:
  *
- * - requireActiveSession(): signed in AND password fresh. Otherwise →
- *   /signin (no session / account gone) or /set-password (must change).
+ * - requireActiveSession(): signed in AND account still exists.
+ *   Otherwise → /signin. Users go straight from login to the dashboard —
+ *   there is no password step: only admins control credentials (/admin).
  * - requireAdmin(): requireActiveSession() + role === "admin", else → /.
- *
- * The `must_change_password` flag is re-read from the database on every
- * call, so flipping it takes effect immediately — no stale-JWT problem.
  */
 
 export interface ActiveUser {
@@ -36,7 +33,6 @@ export async function requireActiveSession(): Promise<ActiveUser> {
         id: users.id,
         email: users.email,
         role: users.role,
-        mustChangePassword: users.mustChangePassword,
       })
       .from(users)
       .where(eq(users.id, session.user.id))
@@ -48,7 +44,6 @@ export async function requireActiveSession(): Promise<ActiveUser> {
 
   const user = rows[0];
   if (!user) redirect("/signin");
-  if (user.mustChangePassword) redirect("/set-password");
   return { id: user.id, email: user.email, role: user.role };
 }
 
