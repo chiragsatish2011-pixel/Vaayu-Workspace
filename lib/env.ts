@@ -70,6 +70,13 @@ export function requireNextAuthSecret(): string {
 
 export function requireNextAuthUrl(): string {
   const url = process.env.NEXTAUTH_URL;
+  // TEMPORARY BUILD DIAGNOSTIC for the malformed-NEXTAUTH_URL prerender
+  // failure (`Invalid URL` at app/providers.tsx:3). A URL is not a secret,
+  // so printing the raw value is safe. REMOVE once the dashboard value is
+  // corrected and the build is green.
+  console.log(
+    `[env][build-debug] NEXTAUTH_URL raw value: ${JSON.stringify(url ?? null)}`
+  );
   if (isMissing(url)) {
     if (isBuildPhase()) {
       return "http://localhost:3000";
@@ -80,6 +87,23 @@ export function requireNextAuthUrl(): string {
     // (e.g. https://YOUR-APP.vercel.app) in Vercel's dashboard.
     throw new Error(
       `NEXTAUTH_URL is not set. ${VERCEL_HINT}`
+    );
+  }
+  // Validity: next-auth parses this with `new URL()` at module scope
+  // (next-auth/react, imported by app/providers.tsx:3), so a value with an
+  // internal space or other illegal host character throws ERR_INVALID_URL
+  // during prerender/SSR. Mirror next-auth's own rule (prepend https://
+  // when no scheme) and fail here with the offending value named — far
+  // clearer than the deep prerender trace. Unlike a missing value (which
+  // keeps a build-phase placeholder for CI/setup flows), a malformed value
+  // is never usable, so this throws in every phase.
+  try {
+    const candidate =
+      (url as string).startsWith("http") ? (url as string) : `https://${url}`;
+    new URL(candidate);
+  } catch {
+    throw new Error(
+      `NEXTAUTH_URL is malformed (${JSON.stringify(url)}). It must be a valid URL like https://your-app.vercel.app with no spaces or extra characters. Fix it in Vercel's Environment Variables settings for this environment.`
     );
   }
   return url as string;

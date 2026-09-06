@@ -7,6 +7,10 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/session";
 
+// Protected, per-user page — always render per request, never prerender
+// at build time (it reads the session + database on every load).
+export const dynamic = "force-dynamic";
+
 /** Admin-only page: create member accounts + see who has access. */
 export default async function AdminPage() {
   const user = await requireAdmin();

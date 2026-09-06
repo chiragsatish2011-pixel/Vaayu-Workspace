@@ -3,6 +3,10 @@ import { PasswordForm } from "@/components/PasswordForm";
 import { Reveal } from "@/components/Reveal";
 import { requireActiveSession } from "@/lib/session";
 
+// Protected, per-user page — always render per request, never prerender
+// at build time (it reads the session on every load).
+export const dynamic = "force-dynamic";
+
 /** Account settings — profile summary + voluntary password change. */
 export default async function SettingsPage() {
   const user = await requireActiveSession();

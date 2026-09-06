@@ -11,7 +11,10 @@ import { authOptions } from "@/lib/auth";
  * Mandatory first-login page. Flagged users land here from every guard
  * and cannot reach anything else until they set their own password.
  * (Deliberately NOT behind requireActiveSession — that would loop.)
+ *
+ * Per-user page — always render per request, never prerender at build time.
  */
+export const dynamic = "force-dynamic";
 export default async function SetPasswordPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/signin");
