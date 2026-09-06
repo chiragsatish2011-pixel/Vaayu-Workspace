@@ -52,3 +52,33 @@ export async function requireAdmin(): Promise<ActiveUser> {
   if (user.role !== "admin") redirect("/");
   return user;
 }
+
+/**
+ * API-route session helpers (SERVER ONLY). Unlike the page guards above,
+ * these return `null` instead of redirecting, so routes can answer 401/403
+ * JSON. Always re-reads the user row — deleted accounts lose access
+ * immediately, even with a live JWT.
+ */
+export async function requireApiSession(): Promise<ActiveUser | null> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return null;
+  try {
+    const rows = await db
+      .select({ id: users.id, email: users.email, role: users.role })
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1);
+    const user = rows[0];
+    if (!user) return null;
+    return { id: user.id, email: user.email, role: user.role };
+  } catch (err) {
+    console.error("[session] api guard DB error:", err);
+    return null;
+  }
+}
+
+export async function requireApiAdmin(): Promise<ActiveUser | null> {
+  const user = await requireApiSession();
+  if (!user || user.role !== "admin") return null;
+  return user;
+}

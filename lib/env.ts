@@ -124,3 +124,59 @@ export function assertRequiredEnv(): {
   const nextAuthUrl = requireNextAuthUrl();
   return { databaseUrl, nextAuthSecret, nextAuthUrl };
 }
+
+/**
+ * Google Drive backend variables (SERVER ONLY — never NEXT_PUBLIC_).
+ *
+ * Enforced ONLY at the Drive layer: every /api/drive/* route and the
+ * /admin/drive-setup OAuth flow calls these first, so a missing value
+ * fails loudly naming exactly which variable is absent. They are NOT
+ * checked globally at startup — the rest of the workspace (sign-in,
+ * dashboard, /setup) must keep working before Drive is configured.
+ * During `next build` they return placeholders so route collection
+ * succeeds without live credentials.
+ */
+export function requireGoogleClientId(): string {
+  const v = process.env.GOOGLE_CLIENT_ID;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-google-client-id";
+    throw new Error(
+      `GOOGLE_CLIENT_ID is not set. ${VERCEL_HINT}`
+    );
+  }
+  return v as string;
+}
+
+export function requireGoogleClientSecret(): string {
+  const v = process.env.GOOGLE_CLIENT_SECRET;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-google-client-secret";
+    throw new Error(
+      `GOOGLE_CLIENT_SECRET is not set. ${VERCEL_HINT}`
+    );
+  }
+  return v as string;
+}
+
+export function requireGoogleDriveRefreshToken(): string {
+  const v = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-google-refresh-token";
+    throw new Error(
+      `GOOGLE_DRIVE_REFRESH_TOKEN is not set. ${VERCEL_HINT} Complete the one-time setup at Admin → Drive setup first.`
+    );
+  }
+  return v as string;
+}
+
+/** Validate all three Drive variables at once. Throws the first missing. */
+export function assertDriveEnv(): {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+} {
+  const clientId = requireGoogleClientId();
+  const clientSecret = requireGoogleClientSecret();
+  const refreshToken = requireGoogleDriveRefreshToken();
+  return { clientId, clientSecret, refreshToken };
+}
