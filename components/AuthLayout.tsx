@@ -36,7 +36,7 @@ export function AuthLayout({
             className="dot-grid pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(70%_60%_at_50%_40%,#000,transparent)]"
           />
           <div className="relative w-full max-w-md animate-fade-up">
-            <Wordmark />
+            <Wordmark size="lg" />
             <p className="mt-8 font-mono text-xs uppercase tracking-[0.22em] text-stone">
               {eyebrow}
             </p>
