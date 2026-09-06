@@ -2,10 +2,11 @@ import {
   BoxIcon,
   CallIcon,
   ChatIcon,
+  FlagIcon,
   FolderIcon,
 } from "@/components/icons";
 
-export type SectionKey = "files" | "projects" | "chat" | "calls";
+export type SectionKey = "checkpoints" | "files" | "projects" | "chat" | "calls";
 
 export interface Section {
   key: SectionKey;
@@ -27,6 +28,26 @@ export interface Section {
 }
 
 export const SECTIONS: Section[] = [
+  {
+    key: "checkpoints",
+    href: "/checkpoints",
+    label: "Checkpoints",
+    wordmark: "Checkpoints",
+    tagline: "Track team timeline & progress.",
+    blurb: "Add progress notes and milestone updates to keep the team aligned.",
+    phase: "Phase 1 · Active timeline",
+    badge: { text: "Live", tone: "new" },
+    gradient: "from-[#10b981] via-[#059669] to-[#047857]",
+    accent: "#10b981",
+    accentText: "text-[#047857]",
+    accentSoftBg: "bg-[#d1fae5]",
+    icon: (p) => <FlagIcon {...p} />,
+    planned: [
+      "Add notes for timeline milestones (e.g. landing page, mobile theme, bug fixes)",
+      "Accessible by all team members (admins and normal users)",
+      "Reverse chronological timeline with author roles and timestamps",
+    ],
+  },
   {
     key: "files",
     href: "/files",

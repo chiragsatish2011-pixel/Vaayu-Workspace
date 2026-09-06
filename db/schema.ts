@@ -24,3 +24,17 @@ export const users = pgTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+export const checkpoints = pgTable("checkpoints", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type Checkpoint = typeof checkpoints.$inferSelect;
+export type NewCheckpoint = typeof checkpoints.$inferInsert;
