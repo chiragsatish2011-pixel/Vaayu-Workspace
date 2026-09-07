@@ -28,19 +28,36 @@ import {
   sheetsWriteHeaderRow,
   type SheetsMetadata,
 } from "@/lib/sheets";
+import { requireCheckpointsSpreadsheetId } from "@/lib/env";
 
 /** Title for app-created Checkpoints spreadsheets (also the reuse key). */
 export const CHECKPOINTS_SHEET_TITLE = "Vaayu Checkpoints";
 
 export const CHECKPOINTS_SHEET_ENV_VAR = "GOOGLE_SHEETS_CHECKPOINTS_ID";
 
-/** Configured ID, or null when unset/blank/placeholder. */
+/**
+ * Configured ID, or null when unset/blank/placeholder.
+ *
+ * SINGLE SOURCE OF TRUTH FIX: delegates to lib/env.ts's
+ * requireCheckpointsSpreadsheetId() so every checkpoint path
+ * (read, append, update, delete, health, setup) resolves the
+ * SAME env var via the SAME function at request time. Previously
+ * this file duplicated the env read (direct process.env access)
+ * separately from lib/checkpoints-store.ts, which allowed the
+ * repair tool and the store to diverge. Now they cannot.
+ *
+ * Returns null for missing/placeholder instead of throwing,
+ * so health checks can report misconfiguration as data.
+ */
 export function configuredSpreadsheetId(): string | null {
-  const v = process.env.GOOGLE_SHEETS_CHECKPOINTS_ID;
-  if (!v || !v.trim() || v.trim().startsWith("build-phase-placeholder")) {
+  try {
+    const id = requireCheckpointsSpreadsheetId();
+    // Build-phase placeholder must not be treated as a real ID.
+    if (id.startsWith("build-phase-placeholder")) return null;
+    return id;
+  } catch {
     return null;
   }
-  return v.trim();
 }
 
 export interface CheckpointsSheetHealth {
