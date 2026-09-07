@@ -19,12 +19,17 @@ export function formatBytes(bytes: number): string {
  * GitHub-style batch progress: stacked per-file segments (width ∝ file size,
  * fill ∝ bytes sent) plus an honest "n of m files · p%" caption. Every number
  * comes from live upload state — nothing simulated.
+ *
+ * Pass `caption` to override the files caption (e.g. a batch job that
+ * represents thousands of files reports its own file counts).
  */
 export function UploadProgressBar({
   segments,
+  caption,
   className = "",
 }: {
   segments: ProgressSegment[];
+  caption?: string;
   className?: string;
 }) {
   const total = segments.reduce((sum, s) => sum + Math.max(s.totalBytes, 0), 0);
@@ -42,8 +47,10 @@ export function UploadProgressBar({
     <div className={className}>
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-steel">
-          {filesDone} of {segments.length}{" "}
-          {segments.length === 1 ? "file" : "files"}
+          {caption ??
+            `${filesDone} of ${segments.length} ${
+              segments.length === 1 ? "file" : "files"
+            }`}
         </p>
         <p
           className={`font-mono text-[11px] font-semibold tabular-nums ${

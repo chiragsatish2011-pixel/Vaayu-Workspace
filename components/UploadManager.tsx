@@ -23,6 +23,18 @@ export interface UploadJob {
   sentBytes: number;
   status: UploadJobStatus;
   error: string | null;
+  /**
+   * File-level granularity for batch jobs (a 3k-file folder publish is ONE
+   * job — without these the toast can only say "0 of 1"). doneFiles counts
+   * fully finished files; totalFiles is the batch size. 0/0 = "no file
+   * info, fall back to job counts" (single-file uploads never set these).
+   */
+  doneFiles: number;
+  totalFiles: number;
+  /** Files inside a batch job that failed permanently (resilient batches
+   * keep going — the job itself still succeeds, so failures need their
+   * own counter to stay visible). */
+  failedFiles: number;
 }
 
 export type UploadMode = "background" | "foreground";
@@ -280,8 +292,16 @@ export async function uploadFileToDrive(
 
 /* ── Context ───────────────────────────────────────────────────────── */
 
+/** Per-file progress inside a batch job (done = fully finished files). */
+export interface FileProgress {
+  done: number;
+  total: number;
+  /** Permanently failed files (batch continues past them). */
+  failed?: number;
+}
+
 export type TrackedTask = (
-  report: (sentBytes: number) => void,
+  report: (sentBytes: number, files?: FileProgress) => void,
   setFinalizing: () => void
 ) => Promise<void>;
 
@@ -324,7 +344,17 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       const task = tasks.current.get(id);
       if (!task) return Promise.resolve();
       updateJob(id, { status: "uploading", sentBytes: 0, error: null });
-      const report = (sentBytes: number) => updateJob(id, { sentBytes });
+      const report = (sentBytes: number, files?: FileProgress) =>
+        updateJob(id, {
+          sentBytes,
+          ...(files
+            ? {
+                doneFiles: Math.max(0, Math.min(files.done, files.total)),
+                totalFiles: Math.max(0, files.total),
+                failedFiles: Math.max(0, files.failed ?? 0),
+              }
+            : {}),
+        });
       const setFinalizing = () => updateJob(id, { status: "finalizing" });
       return task(report, setFinalizing).then(
         () => {
@@ -362,6 +392,9 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
           sentBytes: 0,
           status: "uploading",
           error: null,
+          doneFiles: 0,
+          totalFiles: 0,
+          failedFiles: 0,
         },
       ]);
       setOpen(true);
@@ -472,31 +505,56 @@ function UploadToast({
   ).length;
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const failedCount = jobs.filter((j) => j.status === "error").length;
+  // Unit counts prefer file granularity when any job reports it (a folder
+  // batch is one job for thousands of files); jobs without file info
+  // count as a single unit each so mixed batches still add up.
+  const unitTotal = jobs.reduce(
+    (s, j) => s + (j.totalFiles > 0 ? j.totalFiles : 1),
+    0
+  );
+  const unitDone = jobs.reduce(
+    (s, j) =>
+      s +
+      (j.totalFiles > 0
+        ? Math.min(j.doneFiles, j.totalFiles)
+        : j.status === "done"
+          ? 1
+          : 0),
+    0
+  );
+  const useFiles = jobs.some((j) => j.totalFiles > 0);
+  const failedUnits = failedCount + jobs.reduce((s, j) => s + (j.failedFiles || 0), 0);
 
   const phase: ToastPhase =
-    activeCount > 0 ? "uploading" : failedCount === 0 ? "done" : doneCount > 0 ? "partial" : "failed";
+    activeCount > 0
+      ? "uploading"
+      : failedUnits === 0
+        ? "done"
+        : unitDone > 0
+          ? "partial"
+          : "failed";
 
   const headline =
     phase === "done" ? (
-      `Uploaded ${jobs.length} ${jobs.length === 1 ? "file" : "files"}`
+      `Uploaded ${unitTotal} ${unitTotal === 1 ? "file" : "files"}`
     ) : phase === "failed" ? (
-      `${jobs.length} upload${jobs.length === 1 ? "" : "s"} failed`
+      `${unitTotal} upload${unitTotal === 1 ? "" : "s"} failed`
     ) : phase === "partial" ? (
       <>
-        {doneCount} uploaded ·{" "}
+        {unitDone} uploaded ·{" "}
         <span className="text-error">
-          {failedCount} failed
+          {failedUnits} failed
         </span>
       </>
-    ) : failedCount > 0 ? (
+    ) : failedUnits > 0 ? (
       <>
-        Uploading {doneCount} of {jobs.length} · {pct}% ·{" "}
+        Uploading {unitDone} of {unitTotal} · {pct}% ·{" "}
         <span className="text-error">
-          {failedCount} failed
+          {failedUnits} failed
         </span>
       </>
     ) : (
-      `Uploading ${doneCount} of ${jobs.length} · ${pct}%`
+      `Uploading ${unitDone} of ${unitTotal} · ${pct}%`
     );
 
   const subline =
@@ -580,6 +638,11 @@ function UploadToast({
               totalBytes: j.sizeBytes,
               failed: j.status === "error",
             }))}
+            caption={
+              useFiles
+                ? `${unitDone} of ${unitTotal} ${unitTotal === 1 ? "file" : "files"}`
+                : undefined
+            }
           />
           {jobs.map((j) => (
             <div
@@ -638,10 +701,10 @@ function UploadToast({
         <div className="border-t border-hairline-soft px-4 py-2.5">
           <div className="flex items-baseline justify-between gap-3">
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-steel">
-              {doneCount} of {jobs.length}{" "}
-              {jobs.length === 1 ? "file" : "files"}
-              {failedCount > 0 && (
-                <span className="text-error"> · {failedCount} failed</span>
+              {unitDone} of {unitTotal}{" "}
+              {unitTotal === 1 ? "file" : "files"}
+              {failedUnits > 0 && (
+                <span className="text-error"> · {failedUnits} failed</span>
               )}
             </p>
             <p className="font-mono text-[11px] font-semibold tabular-nums text-ink">

@@ -251,7 +251,40 @@ async function createChildFolder(
  * top-level folder of this tree (null when the file sits directly in the
  * locked root). Every lookup and create pins parents to the chain, so the
  * tree cannot escape the locked root.
+ *
+ * Batch memoization: every prefix of the chain (root+a, root+a+b, …) is
+ * memoized with a 5-minute TTL, and concurrent resolutions of the same
+ * prefix share one in-flight promise. Without this, a 3k-file batch
+ * re-runs the same Drive folder lookups thousands of times (one lookup
+ * per segment per file); with it, each unique folder resolves exactly
+ * once per batch. The in-flight sharing also closes a duplicate-folder
+ * race: two files racing to create the same folder would otherwise both
+ * miss the lookup and create twins.
  */
+const folderMemo = new Map<string, { id: string; at: number }>();
+const inflightFolders = new Map<string, Promise<string>>();
+const FOLDER_MEMO_TTL_MS = 5 * 60 * 1000;
+const MAX_FOLDER_MEMO = 5000;
+
+function folderMemoKey(rootFolderId: string, prefix: string[]): string {
+  return `${rootFolderId}\n${prefix.join("\n")}`;
+}
+
+function folderMemoGet(key: string): string | null {
+  const hit = folderMemo.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > FOLDER_MEMO_TTL_MS) {
+    folderMemo.delete(key);
+    return null;
+  }
+  return hit.id;
+}
+
+function folderMemoSet(key: string, id: string): void {
+  if (folderMemo.size >= MAX_FOLDER_MEMO) folderMemo.clear();
+  folderMemo.set(key, { id, at: Date.now() });
+}
+
 export async function ensureSubfolderPath(
   accessToken: string,
   rootFolderId: string,
@@ -264,14 +297,40 @@ export async function ensureSubfolderPath(
   }
   let current = rootFolderId;
   let top: string | null = null;
+  const prefix: string[] = [];
   for (const part of dirParts) {
-    const existing = await findChildFolder(accessToken, current, part);
-    const id = existing ?? (await createChildFolder(accessToken, current, part));
-    if (!isValidDriveFileId(id)) {
-      throw driveError("resolve subfolder", 502, JSON.stringify({ id }));
+    prefix.push(part);
+    const key = folderMemoKey(rootFolderId, prefix);
+    let step = folderMemoGet(key);
+    if (step === null) {
+      const inflight = inflightFolders.get(key);
+      if (inflight) {
+        step = await inflight;
+      } else {
+        // NOTE: `current` is captured per iteration — the worker awaits
+        // each step before advancing, so the closure always sees this
+        // level's true parent (same prefix ⇒ same parent for every file).
+        const parentId = current;
+        const creating = (async () => {
+          const existing = await findChildFolder(accessToken, parentId, part);
+          const id =
+            existing ?? (await createChildFolder(accessToken, parentId, part));
+          if (!isValidDriveFileId(id)) {
+            throw driveError("resolve subfolder", 502, JSON.stringify({ id }));
+          }
+          folderMemoSet(key, id);
+          return id;
+        })();
+        inflightFolders.set(key, creating);
+        try {
+          step = await creating;
+        } finally {
+          inflightFolders.delete(key);
+        }
+      }
     }
-    if (!top) top = id;
-    current = id;
+    if (prefix.length === 1) top = step;
+    current = step;
   }
   return { parentFolderId: current, topFolderId: top };
 }
@@ -417,12 +476,37 @@ function driveError(action: string, status: number, body: string): Error {
   );
 }
 
-/** Exchange the owner's refresh token for a short-lived access token. */
+/** Exchange the owner's refresh token for a short-lived access token.
+ *
+ * Large folder batches mint one resumable session PER FILE — without
+ * caching, a 3k-file batch would pay 3k full OAuth exchanges (each a
+ * serial HTTPS roundtrip) before a single byte moves. The token is cached
+ * in-module with a 50-minute TTL (Google tokens live ~1h) keyed by the
+ * credentials, so a whole batch costs ~1 exchange. Pure speedup: callers
+ * cannot tell a cached token from a fresh one, and expiry is time-based.
+ */
+let tokenCache: {
+  token: string;
+  expiresAt: number;
+  clientId: string;
+  refreshToken: string;
+} | null = null;
+const TOKEN_TTL_MS = 50 * 60 * 1000;
+
 export async function getDriveAccessToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string
 ): Promise<string> {
+  const now = Date.now();
+  if (
+    tokenCache &&
+    tokenCache.clientId === clientId &&
+    tokenCache.refreshToken === refreshToken &&
+    now < tokenCache.expiresAt
+  ) {
+    return tokenCache.token;
+  }
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -440,6 +524,8 @@ export async function getDriveAccessToken(
     error_description?: unknown;
   } | null;
   if (!res.ok || typeof data?.access_token !== "string") {
+    // A stale cached token must never poison later calls.
+    tokenCache = null;
     throw driveError(
       "refresh access token",
       res.status,
@@ -449,6 +535,12 @@ export async function getDriveAccessToken(
       })
     );
   }
+  tokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + TOKEN_TTL_MS,
+    clientId,
+    refreshToken,
+  };
   return data.access_token;
 }
 
