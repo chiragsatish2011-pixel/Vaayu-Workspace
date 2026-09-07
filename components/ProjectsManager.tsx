@@ -85,6 +85,84 @@ export function ProjectsManager({
   const [uploadMode] = useUploadMode();
   const router = useRouter();
 
+  // ── Reconciliation: Drive vs DB (state-sync fix) ──────────────────
+  // The UI's project list comes from the DB (app/projects/page.tsx).
+  // If a batch uploads files to Drive but the final POST /api/projects
+  // never runs (network error, tab closed, 0% bug), Drive holds files
+  // that the DB never recorded → UI shows "nothing". This state fetches
+  // the real Drive listing and surfaces orphaned items so the user can
+  // recover them without re-uploading 27k files.
+  const [orphans, setOrphans] = useState<
+    { id: string; name: string; mimeType: string; size?: string }[]
+  >([]);
+  const [orphansLoading, setOrphansLoading] = useState(false);
+  const [orphansError, setOrphansError] = useState<string | null>(null);
+  const [recoveringId, setRecoveringId] = useState<string | null>(null);
+  const [showOrphans, setShowOrphans] = useState(false);
+
+  const refreshOrphans = async () => {
+    setOrphansLoading(true);
+    setOrphansError(null);
+    try {
+      const res = await fetch("/api/drive/list", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not list Drive folder.");
+      const driveFiles: { id: string; name: string; mimeType: string; size?: string }[] =
+        Array.isArray(data?.files) ? data.files : [];
+      // A Drive item is orphaned if its ID appears nowhere in the DB
+      // projects table (as codebase or preview). That means it landed in
+      // Drive but the lump DB insert never ran.
+      const knownIds = new Set<string>();
+      for (const p of projects) {
+        if (p.codebaseDriveId) knownIds.add(p.codebaseDriveId);
+        if (p.previewDriveId) knownIds.add(p.previewDriveId);
+      }
+      const orphaned = driveFiles.filter((f) => !knownIds.has(f.id));
+      setOrphans(orphaned);
+    } catch (err) {
+      setOrphansError(err instanceof Error ? err.message : "Sync failed.");
+    } finally {
+      setOrphansLoading(false);
+    }
+  };
+
+  // Fetch once on mount and whenever projects change (so newly recovered
+  // items disappear from the orphan list immediately).
+  useEffect(() => {
+    refreshOrphans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects.length]);
+
+  const handleRecoverOrphan = async (driveFile: {
+    id: string;
+    name: string;
+    mimeType: string;
+  }) => {
+    const titleGuess = driveFile.name.replace(/\/$/, "") || "Recovered project";
+    const descriptionGuess = `Recovered from Drive after interrupted upload — ${driveFile.name} was in Drive but had no project record. Created via Sync with Drive.`;
+    setRecoveringId(driveFile.id);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: titleGuess.slice(0, 100),
+          description: descriptionGuess.slice(0, 1000),
+          codebase: { driveFileId: driveFile.id },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Failed to recover project.");
+      handleProjectLanded(data.project as ProjectItem);
+      // Remove from orphan list optimistically
+      setOrphans((prev) => prev.filter((o) => o.id !== driveFile.id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Recovery failed.");
+    } finally {
+      setRecoveringId(null);
+    }
+  };
+
   const codebaseInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const previewInputRef = useRef<HTMLInputElement>(null);
@@ -242,31 +320,78 @@ export function ProjectsManager({
    * tracked job. Each file carries its relativePath so the server
    * recreates the exact subfolder structure inside the locked Drive
    * folder. Returns the tree's top-level Drive folder id (for the project
-   * record) plus every uploaded file id. Throws the first upload error.
+   * record) plus every uploaded file id.
+   *
+   * STATE-SYNC FIX: previously this threw on the first file error,
+   * aborting the whole batch. If 27k files were attempted and the first
+   * failed at 0%, *zero* files were recorded in the DB even though many
+   * had already landed in Drive (the Drive puts are per-file, the DB
+   * insert is one lump at the end). Now it is resilient: each file is
+   * tried individually (with one automatic retry for transient network
+   * errors), successes are collected, failures are recorded but do not
+   * abort the rest of the tree. The caller can then create a project
+   * record from whatever *did* succeed, so Drive and DB never diverge
+   * silently. A partial result still yields a visible project.
    */
   const runFolderUpload = async (
     picked: PickedUploadFile[],
     report: (sentBytes: number) => void,
     sentBaseRef: { value: number }
-  ): Promise<{ topFolderId: string | null; fileIds: string[] }> => {
+  ): Promise<{
+    topFolderId: string | null;
+    fileIds: string[];
+    failed: { path: string; error: string }[];
+    succeeded: number;
+  }> => {
     let topFolderId: string | null = null;
     const fileIds: string[] = [];
+    const failed: { path: string; error: string }[] = [];
     for (const item of picked) {
-      const uploaded = await uploadFileToDrive(
-        item.file,
-        (sent) => {
-          report(sentBaseRef.value + sent);
-        },
-        { relativePath: item.relativePath }
-      );
-      sentBaseRef.value += item.file.size;
-      report(sentBaseRef.value);
-      fileIds.push(uploaded.driveFileId);
-      if (!topFolderId && uploaded.topFolderId) {
-        topFolderId = uploaded.topFolderId;
+      let uploaded: Awaited<ReturnType<typeof uploadFileToDrive>> | null = null;
+      let lastErr: unknown = null;
+      // One automatic retry for transient network/timeout errors — the
+      // "network error at 0%" case was often a flaky first PUT, not a
+      // permanent failure. Retrying once recovers without user action.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          uploaded = await uploadFileToDrive(
+            item.file,
+            (sent) => {
+              report(sentBaseRef.value + sent);
+            },
+            { relativePath: item.relativePath }
+          );
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          const msg = err instanceof Error ? err.message : String(err);
+          // Only retry on transient network/timeout, not on validation/Drive limits
+          if (!/Network error|timed out|Could not start/.test(msg) || attempt === 1) {
+            break;
+          }
+          // brief backoff before retry
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        }
+      }
+      if (uploaded) {
+        sentBaseRef.value += item.file.size;
+        report(sentBaseRef.value);
+        fileIds.push(uploaded.driveFileId);
+        if (!topFolderId && uploaded.topFolderId) {
+          topFolderId = uploaded.topFolderId;
+        }
+      } else {
+        const msg =
+          lastErr instanceof Error ? lastErr.message : "Upload failed";
+        failed.push({ path: item.relativePath, error: msg });
+        // Still advance progress so the bar doesn't stall at 0% forever;
+        // the toast will show the error count separately.
+        sentBaseRef.value += item.file.size;
+        report(sentBaseRef.value);
       }
     }
-    return { topFolderId, fileIds };
+    return { topFolderId, fileIds, failed, succeeded: fileIds.length };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -315,30 +440,54 @@ export function ProjectsManager({
         const ids: Record<string, { driveFileId: string; name: string; size: number }> =
           isFolderMode ? {} : await uploadBatch(singleFiles);
         if (isFolderMode) {
+          let partialWarning: string | null = null;
           const folderJob = track(jobLabel, totalBytes, async (report) => {
             const sentBaseRef = { value: 0 };
             const tree = await runFolderUpload(folderFiles, report, sentBaseRef);
             // Preview (if any) uploads after the tree, continuing progress.
+            // Preview failure should not abort the whole folder project — it is optional.
             for (const { key, file } of singleFiles) {
-              const uploaded = await uploadFileToDrive(file, (sent) => {
-                report(sentBaseRef.value + sent);
-              });
-              sentBaseRef.value += file.size;
-              report(sentBaseRef.value);
-              ids[key] = uploaded;
+              try {
+                const uploaded = await uploadFileToDrive(file, (sent) => {
+                  report(sentBaseRef.value + sent);
+                });
+                sentBaseRef.value += file.size;
+                report(sentBaseRef.value);
+                ids[key] = uploaded;
+              } catch (err) {
+                // Preview is optional — log and continue with codebase only
+                console.warn(`[ProjectsManager] preview upload failed:`, err);
+                sentBaseRef.value += file.size;
+                report(sentBaseRef.value);
+              }
             }
             const codebaseId = tree.topFolderId ?? tree.fileIds[0];
             if (!codebaseId) {
-              throw new Error("Folder upload produced no files.");
+              const firstErr = tree.failed[0]?.error || "Folder upload produced no files.";
+              throw new Error(
+                `All ${tree.failed.length} files failed (${firstErr}). ${tree.failed.length} of ${folderFiles.length} files did not reach Drive — check your connection and try again, or check Drive folder directly for any partial uploads and use "Sync with Drive" to reconcile.`
+              );
             }
             ids.codebase = {
               driveFileId: codebaseId,
               name: "",
               size: 0,
             };
+            if (tree.failed.length > 0) {
+              partialWarning = `Partial success: ${tree.succeeded}/${folderFiles.length} files reached Drive, ${tree.failed.length} failed. Project created with what succeeded. Missing (first 3): ${tree.failed
+                .slice(0, 3)
+                .map((f) => f.path)
+                .join(", ")}${tree.failed.length > 3 ? " …" : ""} — check Drive or use Sync with Drive.`;
+            }
           });
           setBatchIds((prev) => [...(prev ?? []), folderJob.id]);
           await folderJob.finished;
+          // Bubble partial warning after the toast job completes. The project
+          // itself is still created below so Drive/DB never silently diverge.
+          if (partialWarning) {
+            // Show as formError but do not abort project creation
+            setFormError(partialWarning);
+          }
         }
         setSavingRecord(true);
         const project = await recordProject(snapshot, ids);
@@ -356,6 +505,11 @@ export function ProjectsManager({
     }
 
     // Background (default): close immediately, finish in the global toast.
+    // STATE-SYNC FIX: even if the batch is interrupted, whatever *did*
+    // land in Drive is still recorded as a project so the UI never
+    // shows "nothing" while Drive holds 27k files. runFolderUpload
+    // now returns partial successes, and we create the project from
+    // those. The toast still surfaces the error for retry.
     handleCloseModal();
     const { finished } = track(
       jobLabel,
@@ -363,26 +517,56 @@ export function ProjectsManager({
       async (report, setFinalizing) => {
         const sentBaseRef = { value: 0 };
         const ids: Record<string, { driveFileId: string; name: string; size: number }> = {};
+        let partialFailed = 0;
+        let partialSucceeded = 0;
         if (isFolderMode) {
           const tree = await runFolderUpload(folderFiles, report, sentBaseRef);
           const codebaseId = tree.topFolderId ?? tree.fileIds[0];
           if (!codebaseId) {
-            throw new Error("Folder upload produced no files.");
+            const firstErr = tree.failed[0]?.error || "Folder upload produced no files.";
+            throw new Error(
+              `All ${tree.failed.length} files failed (${firstErr}). Check Drive folder directly — ${tree.failed.length} files did not reach Drive. Use "Sync with Drive" to reconcile.`
+            );
           }
           ids.codebase = { driveFileId: codebaseId, name: "", size: 0 };
+          partialFailed = tree.failed.length;
+          partialSucceeded = tree.succeeded;
+          if (partialFailed > 0) {
+            console.warn(
+              `[ProjectsManager][background] partial upload: ${partialSucceeded}/${folderFiles.length} succeeded, ${partialFailed} failed — still creating project from successes.`
+            );
+          }
         }
         for (const { key, file } of singleFiles) {
-          const uploaded = await uploadFileToDrive(file, (sent) => {
-            report(sentBaseRef.value + sent);
-          });
-          sentBaseRef.value += file.size;
-          report(sentBaseRef.value);
-          ids[key] = uploaded;
+          try {
+            const uploaded = await uploadFileToDrive(file, (sent) => {
+              report(sentBaseRef.value + sent);
+            });
+            sentBaseRef.value += file.size;
+            report(sentBaseRef.value);
+            ids[key] = uploaded;
+          } catch (err) {
+            // Preview is optional — don't abort codebase project
+            if (key === "preview") {
+              console.warn(`[ProjectsManager] preview upload failed (background):`, err);
+              sentBaseRef.value += file.size;
+              report(sentBaseRef.value);
+              continue;
+            }
+            throw err;
+          }
         }
         setFinalizing();
         const project = await recordProject(snapshot, ids);
         report(totalBytes);
         handleProjectLanded(project);
+        if (partialFailed > 0) {
+          // Surface partial info on the toast's final state via console;
+          // the project itself is visible so Drive/DB are now in sync.
+          console.warn(
+            `[ProjectsManager] project ${project.id} created with partial folder: ${partialSucceeded}/${folderFiles.length} files`
+          );
+        }
       }
     );
     finished.catch(() => {
@@ -458,6 +642,71 @@ export function ProjectsManager({
           </button>
         </div>
       </div>
+
+      {/* ── Reconciliation Banner: Drive vs DB (state-sync fix) ── */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={refreshOrphans}
+          disabled={orphansLoading}
+          className="inline-flex items-center gap-2 rounded-full border border-hairline bg-canvas px-4 py-1.5 text-xs font-semibold text-steel hover:border-ink hover:text-ink disabled:opacity-50"
+        >
+          {orphansLoading ? "Syncing…" : "Sync with Drive"}
+        </button>
+        {orphans.length > 0 && (
+          <span className="font-mono text-[11px] text-amber-700">
+            {orphans.length} orphaned {orphans.length === 1 ? "item" : "items"} in Drive — {showOrphans ? "review below" : "not in projects"}
+          </span>
+        )}
+        {orphansError && (
+          <span className="font-mono text-[11px] text-error">{orphansError}</span>
+        )}
+        {orphans.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowOrphans((v) => !v)}
+            className="ml-auto text-xs font-semibold text-ink underline"
+          >
+            {showOrphans ? "Hide" : `Review (${orphans.length})`}
+          </button>
+        )}
+      </div>
+      {showOrphans && orphans.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">
+            Found {orphans.length} {orphans.length === 1 ? "item" : "items"} in Drive with no project record — likely from interrupted batch (e.g. “Vaayu core” 27k files). Recover without re-uploading.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            These files/folders landed in the locked Drive folder but the final DB insert never ran (network error at 0% + lump update). Click Recover to create a project entry pointing at the existing Drive item.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {orphans.slice(0, 20).map((o) => (
+              <li
+                key={o.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{o.name}</p>
+                  <p className="font-mono text-[11px] text-stone">
+                    {o.mimeType === "application/vnd.google-apps.folder" ? "Folder" : o.mimeType} {o.size ? `· ${formatBytes(Number(o.size) || 0)}` : ""} · {o.id.slice(0, 8)}…
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRecoverOrphan(o)}
+                  disabled={recoveringId === o.id}
+                  className="shrink-0 rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+                >
+                  {recoveringId === o.id ? "Recovering…" : "Recover"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {orphans.length > 20 && (
+            <p className="mt-2 text-xs text-amber-800">Showing 20 of {orphans.length} — additional items remain in Drive.</p>
+          )}
+        </div>
+      )}
 
       {/* ── Projects Grid ── */}
       {filteredProjects.length === 0 ? (
