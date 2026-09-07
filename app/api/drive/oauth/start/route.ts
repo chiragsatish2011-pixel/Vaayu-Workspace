@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { DRIVE_SCOPE } from "@/lib/drive";
+import { GOOGLE_SCOPES } from "@/lib/drive";
 import { requireGoogleClientId, requireGoogleClientSecret } from "@/lib/env";
 import { requireApiAdmin } from "@/lib/session";
 
@@ -46,7 +46,9 @@ export async function GET(req: NextRequest) {
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
-      scope: DRIVE_SCOPE,
+      // Drive backend scope + Sheets scope (Checkpoints store) — one consent,
+      // one refresh token for both. Re-running re-issues a token with both.
+      scope: GOOGLE_SCOPES,
       access_type: "offline",
       prompt: "consent",
       state,

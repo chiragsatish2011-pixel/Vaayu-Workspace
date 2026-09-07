@@ -7,9 +7,15 @@ export interface CheckpointItem {
   id: string;
   note: string;
   createdAt: string | Date;
+  updatedAt?: string | Date;
   userId: string;
   userEmail: string;
   userRole: "admin" | "member";
+}
+
+export interface CheckpointViewer {
+  id: string;
+  role: "admin" | "member";
 }
 
 const EXAMPLE_NOTES = [
@@ -19,11 +25,37 @@ const EXAMPLE_NOTES = [
   "added checkpoints section for team progress",
 ];
 
-export function CheckpointsList({ initialItems }: { initialItems: CheckpointItem[] }) {
+function formatDate(value: string | Date): string {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function CheckpointsList({
+  initialItems,
+  currentUser,
+  notice,
+}: {
+  initialItems: CheckpointItem[];
+  currentUser: CheckpointViewer;
+  notice?: string | null;
+}) {
   const [items, setItems] = useState<CheckpointItem[]>(initialItems);
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function canModerate(item: CheckpointItem): boolean {
+    return item.userId === currentUser.id || currentUser.role === "admin";
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,8 +86,90 @@ export function CheckpointsList({ initialItems }: { initialItems: CheckpointItem
     }
   }
 
+  function startEditing(item: CheckpointItem) {
+    setEditingId(item.id);
+    setDraft(item.note);
+    setError(null);
+  }
+
+  async function handleUpdate(item: CheckpointItem) {
+    const trimmed = draft.trim();
+    if (!trimmed || isSaving) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/checkpoints", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, note: trimmed }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update checkpoint.");
+      }
+
+      setItems((prev) =>
+        prev.map((entry) => (entry.id === item.id ? data.checkpoint : entry))
+      );
+      setEditingId(null);
+      setDraft("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDelete(item: CheckpointItem) {
+    if (deletingId) return;
+    const confirmed = window.confirm(
+      "Delete this checkpoint? It will be removed from the team timeline (kept as deleted history in the sheet)."
+    );
+    if (!confirmed) return;
+
+    setDeletingId(item.id);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/checkpoints", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          (data && data.error) || "Failed to delete checkpoint."
+        );
+      }
+
+      setItems((prev) => prev.filter((entry) => entry.id !== item.id));
+      if (editingId === item.id) {
+        setEditingId(null);
+        setDraft("");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
+      {notice && (
+        <p
+          role="alert"
+          className="rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900"
+        >
+          {notice}
+        </p>
+      )}
+
       {/* ── Form Card ── */}
       <div className="rounded-2xl border border-hairline bg-canvas p-6 sm:p-8">
         <h2 className="font-display text-xl font-bold tracking-tight text-ink">
@@ -138,14 +252,14 @@ export function CheckpointsList({ initialItems }: { initialItems: CheckpointItem
         ) : (
           <div className="relative mt-6 space-y-6 pl-4 sm:pl-6 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-[2px] before:bg-hairline-soft sm:before:left-[23px]">
             {items.map((item) => {
-              const formattedDate = new Date(item.createdAt).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              });
               const initial = (item.userEmail?.[0] ?? "?").toUpperCase();
+              const isEditing = editingId === item.id;
+              const isDeleting = deletingId === item.id;
+              const edited =
+                item.updatedAt &&
+                item.createdAt &&
+                new Date(item.updatedAt).getTime() >
+                  new Date(item.createdAt).getTime() + 1000;
 
               return (
                 <div key={item.id} className="relative flex items-start gap-4">
@@ -166,12 +280,66 @@ export function CheckpointsList({ initialItems }: { initialItems: CheckpointItem
                         </Badge>
                       </div>
                       <time className="font-mono text-[11px] uppercase tracking-[0.14em] text-stone">
-                        {formattedDate}
+                        {formatDate(item.createdAt)}
+                        {edited && " · edited"}
                       </time>
                     </div>
-                    <p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-charcoal">
-                      {item.note}
-                    </p>
+                    {isEditing ? (
+                      <div className="mt-2.5 space-y-3">
+                        <textarea
+                          rows={3}
+                          value={draft}
+                          onChange={(e) => setDraft(e.target.value)}
+                          aria-label="Edit checkpoint note"
+                          className="w-full rounded-xl border border-hairline bg-canvas p-3 text-sm outline-none transition-colors focus:border-ink"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(null);
+                              setDraft("");
+                            }}
+                            disabled={isSaving}
+                            className="press inline-flex h-9 items-center justify-center rounded-full border border-hairline px-4 text-sm font-medium text-charcoal transition-colors hover:border-ink disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdate(item)}
+                            disabled={isSaving || !draft.trim()}
+                            className="press inline-flex h-9 items-center justify-center rounded-full bg-ink px-4 text-sm font-semibold text-white transition-colors hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isSaving ? "Saving..." : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-charcoal">
+                        {item.note}
+                      </p>
+                    )}
+                    {canModerate(item) && !isEditing && (
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditing(item)}
+                          disabled={isDeleting}
+                          className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          disabled={isDeleting}
+                          className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-error hover:text-error disabled:opacity-50"
+                        >
+                          {isDeleting ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

@@ -14,30 +14,17 @@
  */
 
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+/** Read/write access to the spreadsheets the app uses (Checkpoints store). */
+export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+/**
+ * Scopes requested at the one-time owner consent (Admin → Drive setup).
+ * Drive backend + Sheets store share one OAuth client and one refresh token.
+ */
+export const GOOGLE_SCOPES = `${DRIVE_SCOPE} ${SHEETS_SCOPE}`;
 export const DRIVE_FOLDER_NAME = "Vaayu-Workspace-Projects";
 
-/** Upload constraints for the Projects section backend. */
-export const CODEBASE_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
-export const PREVIEW_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-const CODEBASE_EXTENSIONS = [".zip", ".tar.gz"] as const;
-const PREVIEW_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"] as const;
-const CODEBASE_MIMES = new Set([
-  "application/zip",
-  "application/x-zip-compressed",
-  "application/gzip",
-  "application/x-gzip",
-  "application/x-tar",
-  "application/octet-stream", // browsers often send this for .tar.gz
-]);
-const PREVIEW_MIMES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/octet-stream",
-]);
-
-export type UploadKind = "codebase" | "preview";
+/** Upload constraints: Google Drive supports all file formats as a general store. */
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file limit
 
 export interface DriveFile {
   id: string;
@@ -47,16 +34,14 @@ export interface DriveFile {
   modifiedTime?: string;
 }
 
-/** Drive file IDs are URL-safe base64-ish strings — reject anything else. */
+/** Drive file/folder IDs are alphanumeric, hyphen and underscore strings. */
 export function isValidDriveFileId(id: unknown): id is string {
-  return (
-    typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id)
-  );
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id);
 }
 
 /**
  * Strip directories, control chars and Drive-hostile characters; keep the
- * validated extension; cap length. Never trust the client filename.
+ * extension; cap length. Never trust the client filename.
  */
 export function sanitizeFileName(raw: string, fallbackExt: string): string {
   const base = raw.split(/[\\/]/).pop() ?? "";
@@ -80,47 +65,28 @@ function extensionOf(name: string): string {
 }
 
 /**
- * Validate an uploaded file for the Projects backend. Returns the
- * sanitized name + limits, or an error string for a 400 response.
+ * Validate an uploaded file for Drive storage:
+ * - Accepts any file type Google Drive naturally supports (no artificial extension gating)
+ * - Rejects empty (0-byte) or corrupted files
+ * - Enforces max per-file size limits
+ * - Sanitizes filename to prevent directory traversal
  */
 export function validateUpload(
-  kind: UploadKind,
   originalName: string,
-  mimeType: string,
   size: number
 ): { name: string } | { error: string } {
+  if (typeof size !== "number" || size <= 0) {
+    return { error: "Cannot upload empty (0-byte) or corrupt files." };
+  }
+  if (size > MAX_UPLOAD_BYTES) {
+    return {
+      error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB).`,
+    };
+  }
   const ext = extensionOf(originalName);
-  if (kind === "codebase") {
-    if (!(CODEBASE_EXTENSIONS as readonly string[]).includes(ext)) {
-      return {
-        error: `Codebase file must be one of: ${CODEBASE_EXTENSIONS.join(", ")}.`,
-      };
-    }
-    if (!CODEBASE_MIMES.has(mimeType.toLowerCase())) {
-      return { error: `Unexpected file type (${mimeType || "unknown"}).` };
-    }
-    if (size > CODEBASE_MAX_BYTES) {
-      return {
-        error: `Codebase file is too large (max ${CODEBASE_MAX_BYTES / 1024 / 1024} MB).`,
-      };
-    }
-    return { name: sanitizeFileName(originalName, ext) };
-  }
-  if (!(PREVIEW_EXTENSIONS as readonly string[]).includes(ext)) {
-    return {
-      error: `Preview image must be one of: ${PREVIEW_EXTENSIONS.join(", ")}.`,
-    };
-  }
-  if (!PREVIEW_MIMES.has(mimeType.toLowerCase())) {
-    return { error: `Unexpected image type (${mimeType || "unknown"}).` };
-  }
-  if (size > PREVIEW_MAX_BYTES) {
-    return {
-      error: `Preview image is too large (max ${PREVIEW_MAX_BYTES / 1024 / 1024} MB).`,
-    };
-  }
   return { name: sanitizeFileName(originalName, ext) };
 }
+
 
 function driveError(action: string, status: number, body: string): Error {
   // Log status + Google's error summary, never tokens.

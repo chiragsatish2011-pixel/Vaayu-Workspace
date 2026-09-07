@@ -1,13 +1,16 @@
-import { desc, eq } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { CheckpointsList } from "@/components/CheckpointsList";
 import { Reveal } from "@/components/Reveal";
-import { db } from "@/db";
-import { checkpoints, users } from "@/db/schema";
+import { getCheckpoints } from "@/lib/checkpoints-store";
 import { requireActiveSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * /checkpoints — timeline backed by the "Checkpoints" Google Sheet
+ * (lib/checkpoints-store.ts). One sheet read per page load; the client
+ * only calls the API for create/update/delete. Auth stays on Neon.
+ */
 export default async function CheckpointsPage() {
   const user = await requireActiveSession();
 
@@ -15,31 +18,24 @@ export default async function CheckpointsPage() {
     id: string;
     note: string;
     createdAt: string;
+    updatedAt: string;
     userId: string;
     userEmail: string;
     userRole: "admin" | "member";
   }> = [];
+  let notice: string | null = null;
 
   try {
-    const rows = await db
-      .select({
-        id: checkpoints.id,
-        note: checkpoints.note,
-        createdAt: checkpoints.createdAt,
-        userId: checkpoints.userId,
-        userEmail: users.email,
-        userRole: users.role,
-      })
-      .from(checkpoints)
-      .innerJoin(users, eq(checkpoints.userId, users.id))
-      .orderBy(desc(checkpoints.createdAt));
-
-    initialCheckpoints = rows.map((r) => ({
-      ...r,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    initialCheckpoints = await getCheckpoints();
   } catch (err) {
     console.error("[CheckpointsPage] Error fetching initial checkpoints:", err);
+    if (user.role === "admin") {
+      const detail =
+        err instanceof Error && err.message
+          ? err.message
+          : "Unknown storage error.";
+      notice = `Checkpoints storage isn't reachable: ${detail} See Admin → Drive setup for the one-time sheet steps.`;
+    }
   }
 
   return (
@@ -62,7 +58,11 @@ export default async function CheckpointsPage() {
         </p>
 
         <Reveal delay={200} className="mt-8">
-          <CheckpointsList initialItems={initialCheckpoints} />
+          <CheckpointsList
+            initialItems={initialCheckpoints}
+            currentUser={{ id: user.id, role: user.role }}
+            notice={notice}
+          />
         </Reveal>
       </section>
     </AppShell>

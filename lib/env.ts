@@ -169,14 +169,51 @@ export function requireGoogleDriveRefreshToken(): string {
   return v as string;
 }
 
-/** Validate all three Drive variables at once. Throws the first missing. */
+export function requireGoogleDriveUploadFolderId(): string {
+  const v = process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-google-folder-id";
+    throw new Error(
+      `GOOGLE_DRIVE_UPLOAD_FOLDER_ID is not set. ${VERCEL_HINT} Set it to your designated Google Drive folder ID.`
+    );
+  }
+  return v as string;
+}
+
+/** Validate all Drive variables at once. Throws the first missing. */
 export function assertDriveEnv(): {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  folderId: string;
 } {
   const clientId = requireGoogleClientId();
   const clientSecret = requireGoogleClientSecret();
   const refreshToken = requireGoogleDriveRefreshToken();
-  return { clientId, clientSecret, refreshToken };
+  const folderId = requireGoogleDriveUploadFolderId();
+  return { clientId, clientSecret, refreshToken, folderId };
+}
+
+
+/**
+ * Spreadsheet ID backing the Checkpoints timeline (SERVER ONLY).
+ *
+ * The "Checkpoints" Google Sheet is the real database for checkpoints —
+ * every create/update/delete flows through it (see lib/checkpoints-store.ts).
+ * It lives in the owner's Drive and is accessed with the SAME owner OAuth
+ * credentials as the Drive backend (lib/sheets.ts reuses the token
+ * exchange), so no separate service account exists. The ID comes from the
+ * sheet's URL (.../spreadsheets/d/<ID>/edit). Admin → Drive setup documents
+ * the one-time sheet creation.
+ */
+export function requireCheckpointsSpreadsheetId(): string {
+  const v = process.env.GOOGLE_SHEETS_CHECKPOINTS_ID;
+  if (isMissing(v)) {
+    if (isBuildPhase())
+      return "build-phase-placeholder-checkpoints-spreadsheet-id";
+    throw new Error(
+      `GOOGLE_SHEETS_CHECKPOINTS_ID is not set. ${VERCEL_HINT} Create the "Checkpoints" spreadsheet (steps live at Admin → Drive setup) and set this to its spreadsheet ID.`
+    );
+  }
+  return v as string;
 }

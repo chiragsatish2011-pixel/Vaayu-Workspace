@@ -16,6 +16,10 @@ export default async function DriveSetupPage() {
   const hasClientId = Boolean(clientId && clientId.trim().length > 0);
   const hasClientSecret = Boolean(clientSecret && clientSecret.trim().length > 0);
   const hasRefreshToken = Boolean(refreshToken && refreshToken.trim().length > 0);
+  const spreadsheetId = process.env.GOOGLE_SHEETS_CHECKPOINTS_ID;
+  const hasSpreadsheetId = Boolean(
+    spreadsheetId && spreadsheetId.trim().length > 0
+  );
 
   const isComplete = hasClientId && hasClientSecret && hasRefreshToken;
 
@@ -46,8 +50,9 @@ export default async function DriveSetupPage() {
           style={{ animationDelay: "160ms" }}
         >
           Authorize your Google account once to enable backend storage for codebase
-          archives (.zip, .tar.gz) and preview images in the Projects section.
-          All uploads and downloads run server-side — your credentials are never exposed.
+          archives (.zip, .tar.gz) and preview images in the Projects section —
+          plus the Google Sheet that stores the Checkpoints timeline. All reads
+          and writes run server-side — your credentials are never exposed.
         </p>
 
         {/* Status Card */}
@@ -119,6 +124,11 @@ export default async function DriveSetupPage() {
                   </p>
                   <p className="text-xs text-steel mt-0.5">
                     Opens Google OAuth consent screen to mint or refresh the token.
+                    {hasRefreshToken && (
+                      <>
+                        {" "}If you authorized before the Checkpoints feature existed, re-authorize — Google must also grant the Sheets permission.
+                      </>
+                    )}
                   </p>
                 </div>
                 <a
@@ -129,6 +139,75 @@ export default async function DriveSetupPage() {
                 </a>
               </div>
             )}
+          </Reveal>
+        </div>
+
+        {/* Step-by-Step Guide */}
+        <div className="mt-10">
+          <Reveal delay={50} className="rounded-2xl border border-hairline bg-canvas p-6 sm:p-8">
+            <div className="flex items-center justify-between gap-4 border-b border-hairline-soft pb-5">
+              <div>
+                <h2 className="font-display text-xl font-bold tracking-tight">
+                  Checkpoints Sheet
+                </h2>
+                <p className="mt-1 text-xs text-steel">
+                  The Google Sheet that acts as the Checkpoints database
+                </p>
+              </div>
+              <Badge tone={hasSpreadsheetId ? "live" : "phase"}>
+                {hasSpreadsheetId ? "Connected" : "Not connected"}
+              </Badge>
+            </div>
+            <ol className="mt-6 space-y-4 text-sm text-steel">
+              <li className="flex gap-4">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
+                  1
+                </span>
+                <p>
+                  <span className="font-semibold text-ink">Create the spreadsheet.</span>{" "}
+                  In your Google Drive, create a spreadsheet named{" "}
+                  <strong>Vaayu Checkpoints</strong> and rename its first tab to{" "}
+                  <code className="bg-fog px-1.5 py-0.5 rounded font-mono text-xs">Checkpoints</code>.
+                </p>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
+                  2
+                </span>
+                <div>
+                  <p>
+                    <span className="font-semibold text-ink">Set the header row.</span>{" "}
+                    Row 1 must be exactly these 8 columns, in order:
+                  </p>
+                  <p className="mt-2 text-xs font-mono bg-fog p-3 rounded-lg border border-hairline-soft text-ink break-all">
+                    id | note | user_id | user_email | user_role | created_at | updated_at | deleted_at
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
+                  3
+                </span>
+                <p>
+                  <span className="font-semibold text-ink">Copy the spreadsheet ID.</span>{" "}
+                  From the sheet&apos;s URL (<code className="bg-fog px-1.5 py-0.5 rounded font-mono text-xs">…/spreadsheets/d/&lt;ID&gt;/edit</code>),
+                  copy the ID and set it as{" "}
+                  <code className="bg-fog px-1.5 py-0.5 rounded font-mono text-xs">GOOGLE_SHEETS_CHECKPOINTS_ID</code>{" "}
+                  in <code className="bg-fog px-1.5 py-0.5 rounded font-mono text-xs">.env.local</code> and in Vercel&apos;s environment variables.
+                </p>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
+                  4
+                </span>
+                <p>
+                  <span className="font-semibold text-ink">Re-authorize above.</span>{" "}
+                  If your refresh token predates the Checkpoints feature, click{" "}
+                  <strong>Re-authorize with Google</strong> so the token carries the Sheets permission. Deletes are soft-deletes (a{" "}
+                  <code className="bg-fog px-1.5 py-0.5 rounded font-mono text-xs">deleted_at</code> stamp) — the app always hides deleted rows.
+                </p>
+              </li>
+            </ol>
           </Reveal>
         </div>
 
@@ -165,9 +244,9 @@ export default async function DriveSetupPage() {
                   2
                 </span>
                 <div>
-                  <p className="font-semibold text-ink">Enable the Google Drive API</p>
+                  <p className="font-semibold text-ink">Enable the Google Drive API and the Google Sheets API</p>
                   <p className="mt-1">
-                    Go to <strong>APIs &amp; Services → Library</strong>, search for <strong>Google Drive API</strong>, and click <strong>Enable</strong>.
+                    Go to <strong>APIs &amp; Services → Library</strong>, search for <strong>Google Drive API</strong>, and click <strong>Enable</strong> — then do the same for <strong>Google Sheets API</strong> (the Checkpoints timeline needs it).
                   </p>
                 </div>
               </li>
