@@ -127,3 +127,148 @@ export async function sheetsUpdateRow(
     { method: "PUT", body: JSON.stringify({ values: [row] }) }
   );
 }
+
+export interface SheetsMetadata {
+  spreadsheetId: string;
+  title: string | null;
+  url: string | null;
+  tabTitles: string[];
+}
+
+/** Lightweight metadata: title, URL, and tab names (for health checks). */
+export async function sheetsGetMetadata(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<SheetsMetadata> {
+  const data = (await sheetsFetch(
+    accessToken,
+    "get spreadsheet",
+    `/${encodeURIComponent(
+      spreadsheetId
+    )}?fields=spreadsheetId,spreadsheetUrl,properties.title,sheets.properties.title`
+  )) as {
+    spreadsheetId?: unknown;
+    spreadsheetUrl?: unknown;
+    properties?: { title?: unknown };
+    sheets?: { properties?: { title?: unknown } }[];
+  };
+  return {
+    spreadsheetId:
+      typeof data?.spreadsheetId === "string"
+        ? data.spreadsheetId
+        : spreadsheetId,
+    title:
+      typeof data?.properties?.title === "string"
+        ? data.properties.title
+        : null,
+    url:
+      typeof data?.spreadsheetUrl === "string"
+        ? data.spreadsheetUrl
+        : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+    tabTitles: Array.isArray(data?.sheets)
+      ? data.sheets
+          .map((s) => s?.properties?.title)
+          .filter((t): t is string => typeof t === "string")
+      : [],
+  };
+}
+
+/** Create a brand-new spreadsheet containing exactly one tab. */
+export async function sheetsCreateSpreadsheet(
+  accessToken: string,
+  title: string,
+  tabTitle: string
+): Promise<SheetsMetadata> {
+  const data = (await sheetsFetch(accessToken, "create spreadsheet", "", {
+    method: "POST",
+    body: JSON.stringify({
+      properties: { title },
+      sheets: [{ properties: { title: tabTitle } }],
+    }),
+  })) as {
+    spreadsheetId?: unknown;
+    spreadsheetUrl?: unknown;
+    properties?: { title?: unknown };
+    sheets?: { properties?: { title?: unknown } }[];
+  };
+  if (typeof data?.spreadsheetId !== "string") {
+    throw new Error(
+      "[sheets] create spreadsheet failed: no spreadsheet ID returned."
+    );
+  }
+  return {
+    spreadsheetId: data.spreadsheetId,
+    title:
+      typeof data?.properties?.title === "string"
+        ? data.properties.title
+        : title,
+    url:
+      typeof data?.spreadsheetUrl === "string"
+        ? data.spreadsheetUrl
+        : `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/edit`,
+    tabTitles: Array.isArray(data?.sheets)
+      ? data.sheets
+          .map((s) => s?.properties?.title)
+          .filter((t): t is string => typeof t === "string")
+      : [tabTitle],
+  };
+}
+
+/** Add a missing tab (idempotent callers check tabTitles first). */
+export async function sheetsAddTab(
+  accessToken: string,
+  spreadsheetId: string,
+  tabTitle: string
+): Promise<void> {
+  await sheetsFetch(
+    accessToken,
+    `add tab ${tabTitle}`,
+    `/${encodeURIComponent(spreadsheetId)}:batchUpdate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{ addSheet: { properties: { title: tabTitle } } }],
+      }),
+    }
+  );
+}
+
+/** Overwrite row 1 of a tab with the exact header (data rows untouched). */
+export async function sheetsWriteHeaderRow(
+  accessToken: string,
+  spreadsheetId: string,
+  tabTitle: string,
+  header: string[]
+): Promise<void> {
+  await sheetsUpdateRow(
+    accessToken,
+    spreadsheetId,
+    `${tabTitle}!A1:H1`,
+    header
+  );
+}
+
+/**
+ * Translate a raw Sheets throw into an actionable setup error. Returns null
+ * when the error is unrecognized (caller rethrows the original).
+ */
+export function sheetsSetupError(err: unknown): Error | null {
+  const text = err instanceof Error ? err.message : "";
+  const status = text.match(/\(HTTP (\d{3})\)/)?.[1] ?? "";
+  if (/insufficient authentication scopes|insufficient permission/i.test(text)) {
+    return new Error(
+      "Google hasn't granted the Sheets permission yet. Run Admin → Drive setup → “Re-authorize with Google”, save the new refresh token, then try again."
+    );
+  }
+  if (/has not been used in project|is disabled|API.*not enabled/i.test(text)) {
+    return new Error(
+      "The Google Sheets API isn't enabled in your Google Cloud project. Enable “Google Sheets API” (APIs & Services → Library), then try again."
+    );
+  }
+  if (status === "404") {
+    return new Error(
+      "No spreadsheet exists at the configured ID — it is wrong or was deleted."
+    );
+  }
+  return null;
+}

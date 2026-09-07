@@ -1,6 +1,7 @@
 ﻿import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
+import { CheckpointsSheetSetup } from "@/components/CheckpointsSheetSetup";
 import { Reveal } from "@/components/Reveal";
 import { requireAdmin } from "@/lib/session";
 
@@ -151,7 +152,29 @@ export default async function DriveSetupPage() {
                   Checkpoints Sheet
                 </h2>
                 <p className="mt-1 text-xs text-steel">
-                  The Google Sheet that acts as the Checkpoints database
+                  One click verifies or creates the sheet — no manual steps needed.
+                  Safe to re-run: a healthy sheet is left untouched, never duplicated.
+                </p>
+              </div>
+              <Badge tone={hasSpreadsheetId ? "live" : "phase"}>
+                {hasSpreadsheetId ? "ID saved" : "No ID saved"}
+              </Badge>
+            </div>
+            <CheckpointsSheetSetup />
+          </Reveal>
+        </div>
+
+        {/* Manual fallback (only needed if the automatic setup above fails) */}
+        <div className="mt-10">
+          <Reveal delay={75} className="rounded-2xl border border-hairline bg-canvas p-6 sm:p-8">
+            <div className="flex items-center justify-between gap-4 border-b border-hairline-soft pb-5">
+              <div>
+                <h2 className="font-display text-xl font-bold tracking-tight">
+                  Manual Sheet Setup (fallback)
+                </h2>
+                <p className="mt-1 text-xs text-steel">
+                  Only needed if automatic setup reports an error — e.g. the Sheets API
+                  is not enabled or the Google permission is missing.
                 </p>
               </div>
               <Badge tone={hasSpreadsheetId ? "live" : "phase"}>
