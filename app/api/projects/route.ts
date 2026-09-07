@@ -1,13 +1,12 @@
-﻿import { desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projects, users } from "@/db/schema";
 import {
   deleteDriveFile,
-  ensureDriveFolder,
+  DriveValidationError,
   getDriveAccessToken,
-  uploadDriveFile,
-  validateUpload,
+  verifyDriveFileInFolder,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireActiveSession } from "@/lib/session";
@@ -67,8 +66,18 @@ export async function GET() {
 }
 
 /**
- * POST /api/projects — Create a new project bundle with Drive storage.
- * Multipart fields: { title, description, codebase: File, preview?: File }
+ * POST /api/projects — record a new project bundle whose files are ALREADY
+ * in Drive. File bytes travel browser→Google directly via a resumable
+ * session (POST /api/drive/upload-session); this route only records.
+ *
+ * Body (JSON): { title, description,
+ *   codebase: { driveFileId: string },
+ *   preview?: { driveFileId: string } }
+ *
+ * Folder lock, enforced server-side: every driveFileId is re-read and
+ * REFUSED unless it sits inside GOOGLE_DRIVE_UPLOAD_FOLDER_ID. Filenames and
+ * sizes stored are Drive's own truth, not client claims. Any file type Drive
+ * supports is accepted.
  */
 export async function POST(req: NextRequest) {
   const user = await requireActiveSession();
@@ -86,71 +95,56 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let form: FormData;
+  let body: unknown;
   try {
-    form = await req.formData();
+    body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: "Invalid form data submission." },
+      {
+        error:
+          "Invalid JSON. Send { title, description, codebase: { driveFileId }, preview?: { driveFileId } }.",
+      },
       { status: 400 }
     );
   }
 
-  const title = String(form.get("title") ?? "").trim();
-  const description = String(form.get("description") ?? "").trim();
-  const codebaseFile = form.get("codebase");
-  const previewFile = form.get("preview");
+  const { title, description, codebase, preview } = (body ?? {}) as {
+    title?: unknown;
+    description?: unknown;
+    codebase?: { driveFileId?: unknown };
+    preview?: { driveFileId?: unknown };
+  };
 
-  if (!title || title.length > 100) {
+  if (typeof title !== "string" || !title.trim() || title.trim().length > 100) {
     return NextResponse.json(
       { error: "Project title is required (max 100 characters)." },
       { status: 400 }
     );
   }
-  if (!description || description.length > 1000) {
+  if (
+    typeof description !== "string" ||
+    !description.trim() ||
+    description.trim().length > 1000
+  ) {
     return NextResponse.json(
       { error: "Project description is required (max 1000 characters)." },
       { status: 400 }
     );
   }
-  if (!(codebaseFile instanceof Blob) || codebaseFile.size === 0) {
+  const codebaseId =
+    codebase && typeof codebase.driveFileId === "string"
+      ? codebase.driveFileId
+      : "";
+  if (!codebaseId) {
     return NextResponse.json(
-      { error: "A compressed codebase archive (.zip or .tar.gz) is required." },
+      { error: "An uploaded project file is required." },
       { status: 400 }
     );
   }
-
-  const codebaseOrigName =
-    codebaseFile instanceof File && codebaseFile.name
-      ? codebaseFile.name
-      : "codebase.zip";
-  const codebaseCheck = validateUpload(
-    "codebase",
-    codebaseOrigName,
-    codebaseFile.type || "application/zip",
-    codebaseFile.size
-  );
-  if ("error" in codebaseCheck) {
-    return NextResponse.json({ error: codebaseCheck.error }, { status: 400 });
-  }
-
-  let previewSanitizedName: string | null = null;
-  if (previewFile instanceof Blob && previewFile.size > 0) {
-    const previewOrigName =
-      previewFile instanceof File && previewFile.name
-        ? previewFile.name
-        : "preview.png";
-    const previewCheck = validateUpload(
-      "preview",
-      previewOrigName,
-      previewFile.type || "image/png",
-      previewFile.size
-    );
-    if ("error" in previewCheck) {
-      return NextResponse.json({ error: previewCheck.error }, { status: 400 });
-    }
-    previewSanitizedName = previewCheck.name;
-  }
+  const previewId =
+    preview && typeof preview.driveFileId === "string"
+      ? preview.driveFileId
+      : null;
 
   try {
     const accessToken = await getDriveAccessToken(
@@ -158,47 +152,44 @@ export async function POST(req: NextRequest) {
       drive.clientSecret,
       drive.refreshToken
     );
-    const folderId = await ensureDriveFolder(accessToken);
 
-    // 1. Upload codebase archive
-    const codebaseUpload = await uploadDriveFile(accessToken, {
-      name: codebaseCheck.name,
-      mimeType: codebaseFile.type || "application/zip",
-      bytes: codebaseFile,
-      folderId,
-    });
+    // 1. Verify the project file sits strictly in the pre-assigned folder
+    const codebaseFile = await verifyDriveFileInFolder(
+      accessToken,
+      codebaseId,
+      drive.folderId
+    );
 
-    // 2. Upload optional preview image
+    // 2. Verify the optional preview the same way
     let previewDriveId: string | null = null;
     let previewFileName: string | null = null;
-    if (previewFile instanceof Blob && previewFile.size > 0 && previewSanitizedName) {
-      const previewUpload = await uploadDriveFile(accessToken, {
-        name: previewSanitizedName,
-        mimeType: previewFile.type || "image/png",
-        bytes: previewFile,
-        folderId,
-      });
-      previewDriveId = previewUpload.id;
-      previewFileName = previewUpload.name;
+    if (previewId) {
+      const previewFile = await verifyDriveFileInFolder(
+        accessToken,
+        previewId,
+        drive.folderId
+      );
+      previewDriveId = previewFile.id;
+      previewFileName = previewFile.name;
     }
 
-    // 3. Save Project in DB
+    // 3. Save Project in DB (Drive's names/sizes, not client claims)
     const [inserted] = await db
       .insert(projects)
       .values({
         userId: user.id,
-        title,
-        description,
-        codebaseDriveId: codebaseUpload.id,
-        codebaseFileName: codebaseUpload.name,
-        codebaseFileSize: formatFileSize(codebaseFile.size),
+        title: title.trim(),
+        description: description.trim(),
+        codebaseDriveId: codebaseFile.id,
+        codebaseFileName: codebaseFile.name,
+        codebaseFileSize: formatFileSize(Number(codebaseFile.size) || 0),
         previewDriveId,
         previewFileName,
       })
       .returning();
 
     console.log(
-      `[POST /api/projects] Created project "${title}" id=${inserted.id} by (${user.email})`
+      `[POST /api/projects] Created project "${title.trim()}" id=${inserted.id} by (${user.email})`
     );
 
     return NextResponse.json(
@@ -214,9 +205,12 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof DriveValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     console.error("[POST /api/projects] Drive or DB error:", err);
     return NextResponse.json(
-      { error: "Failed to upload project to Drive. Please try again." },
+      { error: "Failed to publish project. Please try again." },
       { status: 502 }
     );
   }

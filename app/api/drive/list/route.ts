@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  ensureDriveFolder,
   getDriveAccessToken,
   listDriveFiles,
 } from "@/lib/drive";
@@ -36,8 +35,7 @@ export async function GET() {
       drive.clientSecret,
       drive.refreshToken
     );
-    const folderId = await ensureDriveFolder(accessToken);
-    const files = await listDriveFiles(accessToken, folderId);
+    const files = await listDriveFiles(accessToken, drive.folderId);
     return NextResponse.json({ files });
   } catch (err) {
     console.error("[drive/list]", err);

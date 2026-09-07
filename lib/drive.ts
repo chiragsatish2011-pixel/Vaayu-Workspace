@@ -25,6 +25,20 @@ export const DRIVE_FOLDER_NAME = "Vaayu-Workspace-Projects";
 
 /** Upload constraints: Google Drive supports all file formats as a general store. */
 export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file limit
+/**
+ * Google's multipart upload caps at 5 MB per file — anything larger must use
+ * a resumable session (createResumableUploadSession). The proxy route
+ * (/api/drive/upload) only serves multipart, so it rejects larger files.
+ */
+export const MULTIPART_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/** Thrown for bad upload input (as opposed to Google API failures). */
+export class DriveValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DriveValidationError";
+  }
+}
 
 export interface DriveFile {
   id: string;
@@ -179,7 +193,7 @@ export async function ensureDriveFolder(
   return createdData.id;
 }
 
-/** Multipart upload (metadata + bytes) into the workspace folder. */
+/** Multipart upload (metadata + bytes) strictly into the pre-assigned Drive folder. */
 export async function uploadDriveFile(
   accessToken: string,
   args: {
@@ -189,6 +203,9 @@ export async function uploadDriveFile(
     folderId: string;
   }
 ): Promise<DriveFile> {
+  if (!isValidDriveFileId(args.folderId)) {
+    throw new Error(`[drive] Invalid destination folder ID (${args.folderId}).`);
+  }
   const form = new FormData();
   form.append(
     "metadata",
@@ -218,6 +235,128 @@ export async function uploadDriveFile(
     throw driveError("upload", res.status, JSON.stringify(data));
   }
   return data;
+}
+
+export interface ResumableSession {
+  /** Capability URL the browser PUTs bytes to (metadata already locked). */
+  sessionUri: string;
+  /** Sanitized file name the session was created with. */
+  fileName: string;
+}
+
+/**
+ * Mint a resumable upload session for direct browser→Google byte transfer.
+ *
+ * Folder lock is enforced HERE, server-side: the session metadata pins
+ * parents=[folderId], so bytes sent to the session URI cannot land anywhere
+ * else no matter what the client does. The session URI itself is a
+ * capability URL (no Google credentials travel to the browser).
+ */
+export async function createResumableUploadSession(
+  accessToken: string,
+  args: {
+    name: string;
+    mimeType: string;
+    size: number;
+    folderId: string;
+  }
+): Promise<ResumableSession> {
+  const checked = validateUpload(args.name, args.size);
+  if ("error" in checked) {
+    throw new DriveValidationError(`[drive] ${checked.error}`);
+  }
+  if (!isValidDriveFileId(args.folderId)) {
+    throw new DriveValidationError(
+      `[drive] Invalid destination folder ID (${args.folderId}).`
+    );
+  }
+  const mimeType = args.mimeType || "application/octet-stream";
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": mimeType,
+        "X-Upload-Content-Length": String(args.size),
+      },
+      body: JSON.stringify({
+        name: checked.name,
+        mimeType,
+        parents: [args.folderId],
+      }),
+      cache: "no-store",
+    }
+  );
+  const sessionUri = res.headers.get("location");
+  if (!res.ok || !sessionUri) {
+    const body = await res.text().catch(() => "");
+    throw driveError("create resumable session", res.status, body);
+  }
+  return { sessionUri, fileName: checked.name };
+}
+
+export interface VerifiedDriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: string;
+  parents: string[];
+}
+
+/**
+ * Re-read a file's metadata to PROVE it landed inside the locked folder.
+ * Call this before recording any client-uploaded fileId (e.g. in Neon) —
+ * a fileId pointing outside the folder (or to trash) is refused loudly.
+ */
+export async function verifyDriveFileInFolder(
+  accessToken: string,
+  fileId: string,
+  folderId: string
+): Promise<VerifiedDriveFile> {
+  if (!isValidDriveFileId(fileId)) {
+    throw new DriveValidationError(`[drive] Invalid file ID.`);
+  }
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+      fileId
+    )}?fields=id,name,mimeType,size,parents,trashed`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }
+  );
+  const data = (await res.json().catch(() => null)) as {
+    id?: unknown;
+    name?: unknown;
+    mimeType?: unknown;
+    size?: unknown;
+    parents?: unknown;
+    trashed?: unknown;
+  } | null;
+  if (!res.ok || typeof data?.id !== "string") {
+    throw driveError("verify uploaded file", res.status, JSON.stringify(data));
+  }
+  if (
+    data.trashed ||
+    !Array.isArray(data.parents) ||
+    !data.parents.includes(folderId)
+  ) {
+    throw new DriveValidationError(
+      "[drive] That file is not inside the designated upload folder — refusing to record it."
+    );
+  }
+  return {
+    id: data.id,
+    name: typeof data.name === "string" ? data.name : "upload",
+    mimeType:
+      typeof data.mimeType === "string"
+        ? data.mimeType
+        : "application/octet-stream",
+    size: typeof data.size === "string" ? data.size : "0",
+    parents: data.parents as string[],
+  };
 }
 
 /** Stream a file's bytes back (caller forwards status + headers). */

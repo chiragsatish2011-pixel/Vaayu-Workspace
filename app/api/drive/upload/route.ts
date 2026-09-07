@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  ensureDriveFolder,
   getDriveAccessToken,
+  MULTIPART_MAX_BYTES,
   uploadDriveFile,
   validateUpload,
-  type UploadKind,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireApiSession } from "@/lib/session";
@@ -13,9 +12,15 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/drive/upload — multipart form { kind: "codebase"|"preview",
- * file: File }. Any signed-in user may upload; files land in the owner's
- * Drive folder (see lib/drive.ts). Validated by extension + MIME + size,
- * filename sanitized. Browser never touches Google credentials.
+ * file: File }. Any signed-in user may upload; files land strictly in the
+ * pre-assigned folder (GOOGLE_DRIVE_UPLOAD_FOLDER_ID), enforced server-side.
+ * Any file type Drive supports is accepted (no extension/MIME gating);
+ * 0-byte files and files over the app limit are rejected. Filenames are
+ * sanitized so no path can escape the folder. Browser never touches Google
+ * credentials.
+ *
+ * Small-file proxy only: Google multipart caps at 5 MB — larger files must
+ * use POST /api/drive/upload-session (resumable, direct browser→Google).
  */
 export async function POST(req: NextRequest) {
   const user = await requireApiSession();
@@ -57,15 +62,19 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  if (file.size > MULTIPART_MAX_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "This file is too large for direct upload — start a resumable upload session instead.",
+      },
+      { status: 413 }
+    );
+  }
 
   const originalName =
     file instanceof File && file.name ? file.name : "upload";
-  const checked = validateUpload(
-    kind as UploadKind,
-    originalName,
-    file.type || "application/octet-stream",
-    file.size
-  );
+  const checked = validateUpload(originalName, file.size);
   if ("error" in checked) {
     return NextResponse.json({ error: checked.error }, { status: 400 });
   }
@@ -76,15 +85,14 @@ export async function POST(req: NextRequest) {
       drive.clientSecret,
       drive.refreshToken
     );
-    const folderId = await ensureDriveFolder(accessToken);
     const saved = await uploadDriveFile(accessToken, {
       name: checked.name,
       mimeType: file.type || "application/octet-stream",
       bytes: file,
-      folderId,
+      folderId: drive.folderId,
     });
     console.log(
-      `[drive/upload] (${saved.name}) id=${saved.id} by (${user.email})`
+      `[drive/upload] (${saved.name}) id=${saved.id} into folder (${drive.folderId}) by (${user.email})`
     );
     return NextResponse.json(
       {
