@@ -24,6 +24,7 @@ import {
   useUploadMode,
   useUploads,
 } from "@/components/UploadManager";
+import { FileBrowser } from "@/components/FileBrowser";
 
 export interface ProjectItem {
   id: string;
@@ -61,6 +62,7 @@ export function ProjectsManager({
     url: string;
     title: string;
   } | null>(null);
+  const [browsingProject, setBrowsingProject] = useState<ProjectItem | null>(null);
 
   // Form state
   const [title, setTitle] = useState("");
@@ -833,22 +835,41 @@ export function ProjectsManager({
                   </div>
                 </div>
 
-                {/* Card Footer & Download */}
+                {/* Card Footer & Download + Browse */}
                 <div className="border-t border-hairline-soft p-5 bg-fog/40 flex flex-col gap-3">
-                  {isFolderProject ? (
-                    <p className="flex items-center justify-center gap-2 w-full rounded-2xl border border-hairline-soft bg-fog py-2.5 px-4 text-xs font-semibold text-steel">
-                      <FolderIcon className="h-4 w-4" />
-                      Folder project — browse files in Drive
-                    </p>
-                  ) : (
-                    <a
-                      href={`/api/drive/download?id=${encodeURIComponent(p.codebaseDriveId)}`}
-                      download
-                      className="press flex items-center justify-center gap-2 w-full rounded-2xl bg-ink py-2.5 px-4 text-xs font-semibold text-white shadow-sm hover:bg-charcoal transition-colors"
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBrowsingProject(p)}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-hairline bg-canvas py-2.5 px-4 text-xs font-semibold text-ink hover:border-ink"
                     >
-                      <BoxIcon className="h-4 w-4" />
-                      Download Codebase ({p.codebaseFileSize})
-                    </a>
+                      <FolderIcon className="h-4 w-4" />
+                      Browse files
+                    </button>
+                    {isFolderProject ? (
+                      <a
+                        href={`/api/drive/zip?id=${encodeURIComponent(p.codebaseDriveId)}&name=${encodeURIComponent(p.title)}`}
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-ink py-2.5 px-4 text-xs font-semibold text-white hover:bg-charcoal text-center"
+                      >
+                        <BoxIcon className="h-4 w-4" />
+                        Download zip
+                      </a>
+                    ) : (
+                      <a
+                        href={`/api/drive/download?id=${encodeURIComponent(p.codebaseDriveId)}`}
+                        download
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-ink py-2.5 px-4 text-xs font-semibold text-white hover:bg-charcoal text-center"
+                      >
+                        <BoxIcon className="h-4 w-4" />
+                        Download
+                      </a>
+                    )}
+                  </div>
+                  {/* Keep single-file direct download as secondary for folder projects that also need file view */}
+                  {!isFolderProject && (
+                    <p className="text-center font-mono text-[11px] text-stone">
+                      Single file · {p.codebaseFileSize} — also browsable above
+                    </p>
                   )}
 
                   {/* Author meta */}
@@ -1155,6 +1176,20 @@ export function ProjectsManager({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── File Browser Modal (previews + downloads) ── */}
+      {browsingProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-5xl max-h-[90vh] overflow-auto rounded-3xl border border-hairline bg-canvas shadow-2xl animate-scale-up">
+            <FileBrowser
+              projectId={browsingProject.id}
+              projectDriveId={browsingProject.codebaseDriveId}
+              projectName={browsingProject.title}
+              onClose={() => setBrowsingProject(null)}
+            />
           </div>
         </div>
       )}

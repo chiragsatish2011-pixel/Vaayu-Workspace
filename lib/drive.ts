@@ -719,6 +719,127 @@ export async function listDriveFiles(
   return data.files;
 }
 
+/** Extended file metadata for browser view — includes thumbnail & icon for previews. */
+export interface DriveBrowseFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  modifiedTime?: string;
+  thumbnailLink?: string;
+  iconLink?: string;
+  parents?: string[];
+  isFolder: boolean;
+}
+
+/** In-memory cache for browse results — avoids hammering Drive API on re-open. */
+const browseCache = new Map<string, { at: number; files: DriveBrowseFile[] }>();
+const BROWSE_CACHE_TTL_MS = 30_000;
+
+/** List immediate children of a folder with preview-capable fields. Paginated server-side. */
+export async function listDriveFolderContents(
+  accessToken: string,
+  folderId: string
+): Promise<DriveBrowseFile[]> {
+  const cached = browseCache.get(folderId);
+  if (cached && Date.now() - cached.at < BROWSE_CACHE_TTL_MS) {
+    return cached.files;
+  }
+  const files: DriveBrowseFile[] = [];
+  let pageToken: string | undefined = undefined;
+  do {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+    const url =
+      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,size,modifiedTime,thumbnailLink,iconLink,parents)&orderBy=folder,modifiedTime desc&pageSize=1000` +
+      (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => null)) as {
+      files?: DriveBrowseFile[];
+      nextPageToken?: string;
+    } | null;
+    if (!res.ok || !Array.isArray(data?.files)) {
+      throw driveError("list folder contents", res.status, JSON.stringify(data));
+    }
+    for (const f of data.files) {
+      files.push({
+        ...f,
+        isFolder: f.mimeType === "application/vnd.google-apps.folder",
+      });
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  browseCache.set(folderId, { at: Date.now(), files });
+  return files;
+}
+
+/** Recursively list all files under a project folder (BFS), preserving relative paths. */
+export async function listDriveTree(
+  accessToken: string,
+  rootFolderId: string
+): Promise<{ file: DriveBrowseFile; relativePath: string }[]> {
+  const result: { file: DriveBrowseFile; relativePath: string }[] = [];
+  // BFS queue: {folderId, prefix}
+  const queue: { id: string; prefix: string }[] = [{ id: rootFolderId, prefix: "" }];
+  const visited = new Set<string>([rootFolderId]);
+  // Throttle: small delay between Drive list calls to respect rate limits
+  const throttle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  while (queue.length > 0) {
+    const { id, prefix } = queue.shift()!;
+    const children = await listDriveFolderContents(accessToken, id);
+    for (const child of children) {
+      const rel = prefix ? `${prefix}/${child.name}` : child.name;
+      if (child.isFolder) {
+        if (!visited.has(child.id)) {
+          visited.add(child.id);
+          queue.push({ id: child.id, prefix: rel });
+        }
+        // Don't add folders themselves to file list for zip — they will be
+        // created implicitly via file paths, but we keep them for browser tree
+        result.push({ file: child, relativePath: rel });
+      } else {
+        result.push({ file: child, relativePath: rel });
+      }
+    }
+    if (queue.length > 0) await throttle(40); // ~25 list/sec max, respects rate limits
+  }
+  return result;
+}
+
+/** Fetch a small code/text snippet (first ~4KB) for preview — streaming, not full download. */
+export async function getDriveFileSnippet(
+  accessToken: string,
+  fileId: string,
+  maxBytes = 4096
+): Promise<{ snippet: string; truncated: boolean }> {
+  if (!isValidDriveFileId(fileId)) throw new DriveValidationError("[drive] Invalid file ID.");
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Range: `bytes=0-${maxBytes - 1}`,
+      },
+      cache: "no-store",
+    }
+  );
+  // 206 Partial Content or 200 OK both valid; 404 means not found
+  if (res.status === 404) throw driveError("snippet not found", 404, "File not found");
+  if (!res.ok && res.status !== 206) {
+    const body = await res.text().catch(() => "");
+    throw driveError("snippet fetch", res.status, body);
+  }
+  const text = await res.text().catch(() => "");
+  // If file larger than maxBytes, Drive may return truncated; we detect via Content-Range
+  const contentRange = res.headers.get("content-range");
+  const truncated = !!contentRange && contentRange.includes(`/${maxBytes}`) === false && text.length >= maxBytes;
+  // Limit to first ~50 lines to keep preview readable
+  const lines = text.slice(0, maxBytes).split("\n").slice(0, 50);
+  return { snippet: lines.join("\n"), truncated: truncated || text.length >= maxBytes };
+}
+
 /** Permanently delete a file by ID. */
 export async function deleteDriveFile(
   accessToken: string,
