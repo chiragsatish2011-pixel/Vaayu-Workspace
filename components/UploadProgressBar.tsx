@@ -75,7 +75,7 @@ export function UploadProgressBar({
               style={{ width: `${widthPct}%` }}
             >
               <div
-                className={`h-full rounded-full transition-[width] duration-200 ${
+                className={`h-full rounded-full transition-[width] duration-300 ease-out ${
                   s.failed ? "bg-error" : fillPct >= 100 ? "bg-success-text" : "bg-ink"
                 }`}
                 style={{ width: `${fillPct}%` }}

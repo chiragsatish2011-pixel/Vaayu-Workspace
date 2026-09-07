@@ -329,12 +329,18 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       return task(report, setFinalizing).then(
         () => {
           updateJob(id, { status: "done" });
+          // A completion the user hasn't seen must surface: if the toast
+          // was dismissed mid-upload, bring it back for the success beat
+          // (the auto-hide timer still clears it 5s later when all green).
+          setOpen(true);
         },
         (err: unknown) => {
           updateJob(id, {
             status: "error",
             error: err instanceof Error ? err.message : "Upload failed.",
           });
+          // Failures always resurface — never finish silently while hidden.
+          setOpen(true);
           throw err;
         }
       );
@@ -427,7 +433,17 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ── Global bottom-right toast ─────────────────────────────────────── */
+/* ── Global bottom-right toast ───────────────────────────────────────
+ *
+ * Drive-style floating widget: calm ink/canvas surfaces from the app's own
+ * tokens, mono micro-labels, tabular numerals (no layout jitter as % ticks),
+ * smoothly animated bars (300ms ease-out), and four honest states —
+ * uploading (pulsing dot), done (green check), partial (ink check + calm
+ * failure count — never a blanket alarm when most of the batch landed),
+ * failed (muted red, retry kept next to the error, never catastrophic).
+ */
+
+type ToastPhase = "uploading" | "done" | "partial" | "failed";
 
 function UploadToast({
   jobs,
@@ -451,36 +467,85 @@ function UploadToast({
   const total = jobs.reduce((s, j) => s + j.sizeBytes, 0);
   const sent = jobs.reduce((s, j) => s + Math.min(j.sentBytes, j.sizeBytes), 0);
   const pct = total > 0 ? Math.min(100, Math.round((sent / total) * 100)) : 0;
+  const activeCount = jobs.filter(
+    (j) => j.status === "uploading" || j.status === "finalizing"
+  ).length;
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const failedCount = jobs.filter((j) => j.status === "error").length;
-  const allDone = jobs.every((j) => j.status === "done");
-  const headline = allDone
-    ? `Uploaded ${jobs.length} ${jobs.length === 1 ? "file" : "files"}`
-    : failedCount > 0
-      ? `${failedCount} upload${failedCount === 1 ? "" : "s"} failed`
-      : `Uploading ${doneCount} of ${jobs.length} · ${pct}%`;
+
+  const phase: ToastPhase =
+    activeCount > 0 ? "uploading" : failedCount === 0 ? "done" : doneCount > 0 ? "partial" : "failed";
+
+  const headline =
+    phase === "done" ? (
+      `Uploaded ${jobs.length} ${jobs.length === 1 ? "file" : "files"}`
+    ) : phase === "failed" ? (
+      `${jobs.length} upload${jobs.length === 1 ? "" : "s"} failed`
+    ) : phase === "partial" ? (
+      <>
+        {doneCount} uploaded ·{" "}
+        <span className="text-error">
+          {failedCount} failed
+        </span>
+      </>
+    ) : failedCount > 0 ? (
+      <>
+        Uploading {doneCount} of {jobs.length} · {pct}% ·{" "}
+        <span className="text-error">
+          {failedCount} failed
+        </span>
+      </>
+    ) : (
+      `Uploading ${doneCount} of ${jobs.length} · ${pct}%`
+    );
+
+  const subline =
+    phase === "done"
+      ? `${formatBytes(total)} · all set`
+      : phase === "failed"
+        ? "Nothing landed — retry below"
+        : phase === "partial"
+          ? `${formatBytes(sent)} of ${formatBytes(total)} · retry the failed files`
+          : `${formatBytes(sent)} of ${formatBytes(total)}`;
 
   return (
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[80] w-[min(380px,calc(100vw-2rem))] animate-fade-up overflow-hidden rounded-2xl border border-hairline bg-canvas shadow-2xl"
+      className="fixed bottom-4 right-4 z-[80] w-[min(380px,calc(100vw-2rem))] animate-fade-up overflow-hidden rounded-2xl border border-hairline bg-canvas shadow-2xl ring-1 ring-ink/[0.06]"
     >
-      <div className="flex items-center gap-2.5 px-4 py-3">
-        <span
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${
-            allDone ? "bg-success-text text-white" : "bg-ink text-white"
-          }`}
-        >
-          {allDone ? (
-            <CheckIcon className="h-4 w-4" />
-          ) : (
-            <UploadIcon className="h-4 w-4" />
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="relative grid h-9 w-9 shrink-0 place-items-center">
+          <span
+            className={`grid h-9 w-9 place-items-center rounded-full text-white transition-colors duration-300 ${
+              phase === "done"
+                ? "bg-success-text"
+                : phase === "failed"
+                  ? "bg-error"
+                  : "bg-ink"
+            }`}
+          >
+            {phase === "done" || phase === "partial" ? (
+              <CheckIcon className="h-4 w-4" />
+            ) : phase === "failed" ? (
+              <CloseIcon className="h-4 w-4" />
+            ) : (
+              <UploadIcon className="h-4 w-4" />
+            )}
+          </span>
+          {phase === "uploading" && (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-canvas bg-success-text"
+            />
           )}
         </span>
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-          {headline}
-        </p>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-sm font-semibold text-ink">{headline}</p>
+          <p className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-stone">
+            {subline}
+          </p>
+        </div>
         <button
           type="button"
           onClick={onToggleCollapsed}
@@ -488,7 +553,7 @@ function UploadToast({
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-steel transition-colors hover:bg-fog hover:text-ink"
         >
           <span
-            className={`inline-block text-xs transition-transform duration-200 ${
+            className={`inline-block text-xs transition-transform duration-300 ${
               collapsed ? "rotate-180" : ""
             }`}
             aria-hidden
@@ -507,7 +572,7 @@ function UploadToast({
       </div>
 
       {!collapsed && (
-        <div className="max-h-64 space-y-3 overflow-y-auto border-t border-hairline-soft px-4 py-3">
+        <div className="max-h-64 space-y-2 overflow-y-auto border-t border-hairline-soft px-4 py-3">
           <UploadProgressBar
             segments={jobs.map((j) => ({
               label: j.id,
@@ -517,12 +582,19 @@ function UploadToast({
             }))}
           />
           {jobs.map((j) => (
-            <div key={j.id} className="flex items-start gap-2.5">
+            <div
+              key={j.id}
+              className={`flex items-start gap-2.5 ${
+                j.status === "error"
+                  ? "-mx-1 rounded-xl bg-error-bg/70 px-2.5 py-2"
+                  : "px-1.5 py-1"
+              }`}
+            >
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate text-[13px] font-medium text-ink">
                   {j.label}
                 </p>
-                <p className="mt-0.5 font-mono text-[11px] text-stone">
+                <p className="mt-0.5 font-mono text-[11px] tabular-nums text-stone">
                   {j.status === "done" ? (
                     <span className="text-success-text">Complete · {formatBytes(j.sizeBytes)}</span>
                   ) : j.status === "error" ? (
@@ -539,7 +611,7 @@ function UploadToast({
                   <button
                     type="button"
                     onClick={() => onRetry(j.id)}
-                    className="rounded-full border border-hairline px-3 py-1 text-xs font-semibold text-ink transition-colors hover:border-ink"
+                    className="rounded-full border border-hairline bg-canvas px-3 py-1 text-xs font-semibold text-ink transition-colors hover:border-ink"
                   >
                     Retry
                   </button>
@@ -563,19 +635,37 @@ function UploadToast({
       )}
 
       {collapsed && (
-        <div
-          className="h-1 w-full bg-hairline-soft"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct}
-        >
+        <div className="border-t border-hairline-soft px-4 py-2.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-steel">
+              {doneCount} of {jobs.length}{" "}
+              {jobs.length === 1 ? "file" : "files"}
+              {failedCount > 0 && (
+                <span className="text-error"> · {failedCount} failed</span>
+              )}
+            </p>
+            <p className="font-mono text-[11px] font-semibold tabular-nums text-ink">
+              {phase === "done" ? 100 : pct}%
+            </p>
+          </div>
           <div
-            className={`h-full transition-[width] duration-200 ${
-              failedCount > 0 ? "bg-error" : allDone ? "bg-success-text" : "bg-ink"
-            }`}
-            style={{ width: `${allDone ? 100 : pct}%` }}
-          />
+            className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-hairline-soft"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={phase === "done" ? 100 : pct}
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-300 ease-out ${
+                phase === "failed"
+                  ? "bg-error"
+                  : phase === "done"
+                    ? "bg-success-text"
+                    : "bg-ink"
+              }`}
+              style={{ width: `${phase === "done" ? 100 : pct}%` }}
+            />
+          </div>
         </div>
       )}
     </div>
