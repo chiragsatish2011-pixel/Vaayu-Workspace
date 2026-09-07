@@ -244,5 +244,8 @@ export function requireCheckpointsSpreadsheetId(): string {
       `GOOGLE_SHEETS_CHECKPOINTS_ID is not set. ${VERCEL_HINT} Create the "Checkpoints" spreadsheet (steps live at Admin → Drive setup) and set this to its spreadsheet ID.`
     );
   }
-  return v as string;
+  // Trim: copy-paste from the browser routinely smuggles a trailing
+  // space/newline into Vercel env values, and Google 404s the padded ID
+  // ("Requested entity was not found") with no hint it was whitespace.
+  return (v as string).trim();
 }

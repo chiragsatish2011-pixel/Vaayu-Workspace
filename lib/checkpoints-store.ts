@@ -100,6 +100,11 @@ async function readSheet(): Promise<{
 }> {
   const spreadsheetId = requireCheckpointsSpreadsheetId();
   const now = Date.now();
+  // TEMP-DEBUG (live 404 investigation — remove after): prove exactly which
+  // ID the READ path uses at runtime in production (Vercel Function logs).
+  console.log(
+    `[checkpoints-debug] READ id=${JSON.stringify(spreadsheetId)} length=${spreadsheetId.length}`
+  );
   if (
     cache &&
     cache.spreadsheetId === spreadsheetId &&
@@ -199,6 +204,12 @@ export async function createCheckpoint(
 
   const spreadsheetId = requireCheckpointsSpreadsheetId();
   const token = await getSheetsAccessToken();
+  // TEMP-DEBUG (live 404 investigation — remove after): prove exactly which
+  // ID the APPEND path uses at runtime (compare with the READ log above —
+  // they must be identical strings or the paths have diverged again).
+  console.log(
+    `[checkpoints-debug] APPEND id=${JSON.stringify(spreadsheetId)} length=${spreadsheetId.length}`
+  );
   const now = nowIso();
   const record: CheckpointRecord = {
     id: randomUUID(),
