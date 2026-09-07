@@ -2,11 +2,12 @@ import {
   BoxIcon,
   CallIcon,
   ChatIcon,
+  CpuIcon,
   FlagIcon,
   FolderIcon,
 } from "@/components/icons";
 
-export type SectionKey = "checkpoints" | "files" | "projects" | "chat" | "calls";
+export type SectionKey = "worker" | "checkpoints" | "files" | "projects" | "chat" | "calls";
 
 export interface Section {
   key: SectionKey;
@@ -28,6 +29,26 @@ export interface Section {
 }
 
 export const SECTIONS: Section[] = [
+  {
+    key: "worker",
+    href: "/worker",
+    label: "Vaayu Worker",
+    wordmark: "Vaayu Worker",
+    tagline: "AI Engineering Worker powered by Google Jules.",
+    blurb: "Delegate tasks, approve execution plans, and track live autonomous agent sessions.",
+    phase: "Phase 1 · Live Jules Integration",
+    badge: { text: "Live", tone: "new" },
+    gradient: "from-[#f59e0b] via-[#d97706] to-[#b45309]",
+    accent: "#f59e0b",
+    accentText: "text-[#b45309]",
+    accentSoftBg: "bg-[#fef3c7]",
+    icon: (p) => <CpuIcon {...p} />,
+    planned: [
+      "Full Google Jules API frontend for creating and controlling agent tasks",
+      "Real-time session status, activity log, plan approval and user messaging",
+      "Live quota tracking for 24h limits (100) and concurrent sessions (10)",
+    ],
+  },
   {
     key: "checkpoints",
     href: "/checkpoints",

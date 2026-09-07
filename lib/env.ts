@@ -147,6 +147,17 @@ export function requireGoogleClientId(): string {
   return v as string;
 }
 
+export function requireJulesApiKey(): string {
+  const v = process.env.JULES_API || process.env.JULES_API_KEY;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-jules-api-key";
+    throw new Error(
+      `JULES_API is not set. ${VERCEL_HINT}`
+    );
+  }
+  return v as string;
+}
+
 export function requireGoogleClientSecret(): string {
   const v = process.env.GOOGLE_CLIENT_SECRET;
   if (isMissing(v)) {
