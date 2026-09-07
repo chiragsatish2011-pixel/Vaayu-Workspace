@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/AppShell";
 import { Reveal } from "@/components/Reveal";
+import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
 import { requireActiveSession } from "@/lib/session";
 
 // Protected, per-user page — always render per request, never prerender
@@ -42,6 +43,21 @@ export default async function SettingsPage() {
             Role and password changes happen through your admin — contact
             them if you need anything updated on your account.
           </p>
+        </Reveal>
+
+        <Reveal
+          delay={120}
+          className="mt-6 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8"
+        >
+          <h2 className="font-display text-xl font-bold tracking-tight text-ink">
+            Uploads
+          </h2>
+          <p className="mt-1 text-sm text-steel">
+            How publishing and file uploads behave for you on this device.
+          </p>
+          <div className="mt-5 border-t border-hairline-soft pt-5">
+            <UploadPreferenceToggle />
+          </div>
         </Reveal>
       </section>
     </AppShell>

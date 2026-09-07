@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import {
   BoxIcon,
@@ -9,6 +10,12 @@ import {
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
+import { UploadProgressBar } from "@/components/UploadProgressBar";
+import {
+  uploadFileToDrive,
+  useUploadMode,
+  useUploads,
+} from "@/components/UploadManager";
 
 export interface ProjectItem {
   id: string;
@@ -56,6 +63,13 @@ export function ProjectsManager({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Foreground mode: job ids of the in-flight batch, rendered inline.
+  const [batchIds, setBatchIds] = useState<string[] | null>(null);
+  const [savingRecord, setSavingRecord] = useState(false);
+
+  const { jobs, track } = useUploads();
+  const [uploadMode] = useUploadMode();
+  const router = useRouter();
 
   const codebaseInputRef = useRef<HTMLInputElement>(null);
   const previewInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +100,8 @@ export function ProjectsManager({
       setPreviewUrl(null);
     }
     setFormError(null);
+    setBatchIds(null);
+    setSavingRecord(false);
     if (codebaseInputRef.current) codebaseInputRef.current.value = "";
     if (previewInputRef.current) previewInputRef.current.value = "";
   };
@@ -94,6 +110,60 @@ export function ProjectsManager({
     if (submitting) return;
     resetForm();
     setIsModalOpen(false);
+  };
+
+  /**
+   * Upload one batch of files as globally tracked jobs (visible in the
+   * bottom-right toast across all routes). Returns Drive file refs keyed by
+   * form field. Throws the first upload error.
+   */
+  const uploadBatch = async (
+    files: Array<{ key: string; file: File }>
+  ): Promise<Record<string, { driveFileId: string; name: string; size: number }>> => {
+    const results: Record<string, { driveFileId: string; name: string; size: number }> = {};
+    const ids: string[] = [];
+    const pending = files.map(({ key, file }) => {
+      const { id, finished } = track(file.name, file.size, async (report, setFinalizing) => {
+        const uploaded = await uploadFileToDrive(file, report);
+        setFinalizing();
+        results[key] = uploaded;
+      });
+      ids.push(id);
+      return finished;
+    });
+    setBatchIds(ids);
+    await Promise.all(pending);
+    return results;
+  };
+
+  const recordProject = async (
+    snapshot: { title: string; description: string },
+    ids: Record<string, { driveFileId: string }>
+  ): Promise<ProjectItem> => {
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: snapshot.title,
+        description: snapshot.description,
+        codebase: { driveFileId: ids.codebase.driveFileId },
+        ...(ids.preview
+          ? { preview: { driveFileId: ids.preview.driveFileId } }
+          : {}),
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(
+        (data && data.error) || "Failed to publish project."
+      );
+    }
+    return data.project as ProjectItem;
+  };
+
+  const handleProjectLanded = (project: ProjectItem) => {
+    setProjects((prev) => [project, ...prev]);
+    router.refresh();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,39 +177,62 @@ export function ProjectsManager({
       return;
     }
     if (!codebaseFile) {
-      setFormError("Please select a compressed codebase file (.zip or .tar.gz).");
+      setFormError("Please select a project file.");
       return;
     }
 
-    setSubmitting(true);
-    setFormError(null);
+    const files = [
+      { key: "codebase", file: codebaseFile },
+      ...(previewFile ? [{ key: "preview", file: previewFile }] : []),
+    ];
+    const snapshot = { title: title.trim(), description: description.trim() };
 
-    const formData = new FormData();
-    formData.append("title", title.trim());
-    formData.append("description", description.trim());
-    formData.append("codebase", codebaseFile);
-    if (previewFile) {
-      formData.append("preview", previewFile);
-    }
-
-    try {
-      const res = await fetch("/api/projects", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create project.");
+    // Foreground mode (Settings opt-in): modal stays open with live progress.
+    if (uploadMode === "foreground") {
+      setSubmitting(true);
+      setFormError(null);
+      try {
+        const ids = await uploadBatch(files);
+        setSavingRecord(true);
+        const project = await recordProject(snapshot, ids);
+        handleProjectLanded(project);
+        handleCloseModal();
+      } catch (err) {
+        setFormError(
+          err instanceof Error ? err.message : "An unexpected error occurred."
+        );
+      } finally {
+        setSubmitting(false);
+        setSavingRecord(false);
       }
-
-      setProjects((prev) => [data.project, ...prev]);
-      handleCloseModal();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "An unexpected error occurred.");
-    } finally {
-      setSubmitting(false);
+      return;
     }
+
+    // Background (default): close immediately, finish in the global toast.
+    handleCloseModal();
+    const { finished } = track(
+      `Publish "${snapshot.title}"`,
+      files.reduce((sum, f) => sum + f.file.size, 0),
+      async (report, setFinalizing) => {
+        let sentBase = 0;
+        const ids: Record<string, { driveFileId: string; name: string; size: number }> = {};
+        for (const { key, file } of files) {
+          const uploaded = await uploadFileToDrive(file, (sent) => {
+            report(sentBase + sent);
+          });
+          sentBase += file.size;
+          report(sentBase);
+          ids[key] = uploaded;
+        }
+        setFinalizing();
+        const project = await recordProject(snapshot, ids);
+        report(files.reduce((sum, f) => sum + f.file.size, 0));
+        handleProjectLanded(project);
+      }
+    );
+    finished.catch(() => {
+      // Surfaced on the toast job row (with Retry); the modal is long gone.
+    });
   };
 
   const handleDelete = async (projectId: string, projectTitle: string) => {
@@ -223,7 +316,7 @@ export function ProjectsManager({
           <p className="mt-2 text-sm text-steel max-w-md mx-auto">
             {searchQuery
               ? "Try tweaking your search term to find what you need."
-              : "Publish your first codebase bundle with description, preview image, and compressed archive directly to Google Drive."}
+              : "Publish your first project file with description, optional preview image, and any file type directly to Google Drive."}
           </p>
           {!searchQuery && (
             <button
@@ -277,7 +370,9 @@ export function ProjectsManager({
                     {/* Format Badge */}
                     <div className="absolute top-3 right-3">
                       <span className="rounded-full bg-ink/80 backdrop-blur-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                        {p.codebaseFileName.endsWith(".tar.gz") ? "TAR.GZ" : "ZIP"}
+                        {(p.codebaseFileName.split(".").pop() ?? "file")
+                          .toUpperCase()
+                          .slice(0, 8)}
                       </span>
                     </div>
                   </div>
@@ -363,7 +458,7 @@ export function ProjectsManager({
                   Publish New Project
                 </h2>
                 <p className="mt-1 text-xs text-steel">
-                  Upload package archive and metadata to your Google Drive backend.
+                  Upload any project file and metadata to your Google Drive backend.
                 </p>
               </div>
               <button
@@ -415,17 +510,16 @@ export function ProjectsManager({
                 />
               </div>
 
-              {/* Codebase File (.zip / .tar.gz) */}
+              {/* Codebase File (any Drive-supported type) */}
               <div>
                 <label className="block font-mono text-xs uppercase tracking-wider text-steel mb-1.5 font-semibold">
-                  Codebase Archive (.zip, .tar.gz — max 50MB) *
+                  Project File (any type · max 500MB) *
                 </label>
                 <div className="rounded-2xl border-2 border-dashed border-hairline hover:border-ink/60 bg-fog/50 p-4 transition-colors">
                   <input
                     ref={codebaseInputRef}
                     type="file"
                     required
-                    accept=".zip,.tar.gz,application/zip,application/x-zip-compressed,application/gzip,application/x-gzip,application/x-tar"
                     onChange={handleCodebaseChange}
                     className="block w-full text-xs text-steel file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-ink file:text-white hover:file:bg-charcoal cursor-pointer"
                   />
@@ -441,7 +535,7 @@ export function ProjectsManager({
               {/* Preview Image */}
               <div>
                 <label className="block font-mono text-xs uppercase tracking-wider text-steel mb-1.5 font-semibold">
-                  Preview Image (optional — .png, .jpg, .webp up to 10MB)
+                  Preview Image (optional — image files · max 500MB)
                 </label>
                 <div className="rounded-2xl border-2 border-dashed border-hairline hover:border-ink/60 bg-fog/50 p-4 transition-colors">
                   <input
@@ -474,6 +568,31 @@ export function ProjectsManager({
                   )}
                 </div>
               </div>
+
+              {/* Live batch progress (foreground mode) */}
+              {submitting && batchIds && batchIds.length > 0 && (
+                <div className="rounded-2xl border border-hairline-soft bg-fog/50 p-4">
+                  <UploadProgressBar
+                    segments={batchIds.map((id) => {
+                      const job = jobs.find((j) => j.id === id);
+                      return {
+                        label: job?.label ?? id,
+                        doneBytes:
+                          job?.status === "done"
+                            ? (job?.sizeBytes ?? 0)
+                            : (job?.sentBytes ?? 0),
+                        totalBytes: job?.sizeBytes ?? 0,
+                        failed: job?.status === "error",
+                      };
+                    })}
+                  />
+                  <p className="mt-1.5 text-xs text-steel">
+                    {savingRecord
+                      ? "Files uploaded — saving project…"
+                      : "Uploading files to Google Drive…"}
+                  </p>
+                </div>
+              )}
 
               {/* Submit Buttons */}
               <div className="pt-3 border-t border-hairline-soft flex items-center justify-end gap-3">
