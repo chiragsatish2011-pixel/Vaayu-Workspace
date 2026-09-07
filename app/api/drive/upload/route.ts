@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ensureSubfolderPath,
   getDriveAccessToken,
   MULTIPART_MAX_BYTES,
+  resolveUploadDestination,
   uploadDriveFile,
-  validateUpload,
+  uploadHttpError,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireApiSession } from "@/lib/session";
@@ -12,12 +14,13 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/drive/upload — multipart form { kind: "codebase"|"preview",
- * file: File }. Any signed-in user may upload; files land strictly in the
- * pre-assigned folder (GOOGLE_DRIVE_UPLOAD_FOLDER_ID), enforced server-side.
- * Any file type Drive supports is accepted (no extension/MIME gating);
- * 0-byte files and files over the app limit are rejected. Filenames are
- * sanitized so no path can escape the folder. Browser never touches Google
- * credentials.
+ * file: File, relativePath?: string }. Any signed-in user may upload; files
+ * land strictly in the pre-assigned folder (GOOGLE_DRIVE_UPLOAD_FOLDER_ID),
+ * enforced server-side — an optional `relativePath` recreates subfolders
+ * strictly INSIDE it, never outside. Any file type Drive stores is
+ * accepted (no extension/MIME gating), at any size Drive itself allows.
+ * Filenames are sanitized so no path can escape the folder. Browser never
+ * touches Google credentials.
  *
  * Small-file proxy only: Google multipart caps at 5 MB — larger files must
  * use POST /api/drive/upload-session (resumable, direct browser→Google).
@@ -43,22 +46,23 @@ export async function POST(req: NextRequest) {
     form = await req.formData();
   } catch {
     return NextResponse.json(
-      { error: "Invalid form data. Send multipart { kind, file }." },
+      { error: "Invalid form data. Send multipart { kind, file, relativePath? }." },
       { status: 400 }
     );
   }
 
   const kind = form.get("kind");
   const file = form.get("file");
+  const relativePathRaw = form.get("relativePath");
   if (kind !== "codebase" && kind !== "preview") {
     return NextResponse.json(
       { error: 'Field "kind" must be "codebase" or "preview".' },
       { status: 400 }
     );
   }
-  if (!(file instanceof Blob) || file.size === 0) {
+  if (!(file instanceof Blob)) {
     return NextResponse.json(
-      { error: "A non-empty file is required." },
+      { error: "A file is required." },
       { status: 400 }
     );
   }
@@ -74,25 +78,31 @@ export async function POST(req: NextRequest) {
 
   const originalName =
     file instanceof File && file.name ? file.name : "upload";
-  const checked = validateUpload(originalName, file.size);
-  if ("error" in checked) {
-    return NextResponse.json({ error: checked.error }, { status: 400 });
-  }
 
   try {
+    const dest = resolveUploadDestination(
+      typeof relativePathRaw === "string" ? relativePathRaw : undefined,
+      originalName,
+      file.size
+    );
     const accessToken = await getDriveAccessToken(
       drive.clientId,
       drive.clientSecret,
       drive.refreshToken
     );
+    const { parentFolderId } = await ensureSubfolderPath(
+      accessToken,
+      drive.folderId,
+      dest.dirParts
+    );
     const saved = await uploadDriveFile(accessToken, {
-      name: checked.name,
+      name: dest.fileName,
       mimeType: file.type || "application/octet-stream",
       bytes: file,
-      folderId: drive.folderId,
+      folderId: parentFolderId,
     });
     console.log(
-      `[drive/upload] (${saved.name}) id=${saved.id} into folder (${drive.folderId}) by (${user.email})`
+      `[drive/upload] (${saved.name}) id=${saved.id} into folder (${parentFolderId}) by (${user.email})`
     );
     return NextResponse.json(
       {
@@ -104,10 +114,8 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
-    console.error("[drive/upload]", err);
-    return NextResponse.json(
-      { error: "Drive upload failed. Please try again." },
-      { status: 502 }
-    );
+    const mapped = uploadHttpError(err);
+    if (mapped.status >= 500) console.error("[drive/upload]", err);
+    return NextResponse.json({ error: mapped.message }, { status: mapped.status });
   }
 }

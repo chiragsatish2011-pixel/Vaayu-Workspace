@@ -49,8 +49,8 @@ export default async function DriveSetupPage() {
           className="mt-4 max-w-2xl animate-fade-up text-[15px] leading-relaxed text-steel"
           style={{ animationDelay: "160ms" }}
         >
-          Authorize your Google account once to enable backend storage for codebase
-          archives (.zip, .tar.gz) and preview images in the Projects section —
+          Authorize your Google account once to enable backend storage for project
+          files of any type, entire folder trees, and preview files in the Projects section —
           plus the Google Sheet that stores the Checkpoints timeline. All reads
           and writes run server-side — your credentials are never exposed.
         </p>

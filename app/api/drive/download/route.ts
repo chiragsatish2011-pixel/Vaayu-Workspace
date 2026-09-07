@@ -64,6 +64,18 @@ export async function GET(req: NextRequest) {
       size?: string;
     };
 
+    // Folder projects (whole uploaded trees) cannot stream as one file —
+    // say so clearly instead of proxying a confusing Google error.
+    if (meta.mimeType === "application/vnd.google-apps.folder") {
+      return NextResponse.json(
+        {
+          error:
+            "This project is a folder in Google Drive, not a single file — browse its files directly in Drive.",
+        },
+        { status: 400 }
+      );
+    }
+
     const upstream = await downloadDriveFile(accessToken, id);
     if (upstream.status === 404) {
       return NextResponse.json({ error: "File not found." }, { status: 404 });

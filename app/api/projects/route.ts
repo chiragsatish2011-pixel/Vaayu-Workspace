@@ -14,10 +14,16 @@ import { requireActiveSession } from "@/lib/session";
 export const runtime = "nodejs";
 
 function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 ** 4) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
 }
+
+/** Drive folder MIME type — a published "codebase" may be a whole tree. */
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 
 /**
  * GET /api/projects — List all projects with author metadata, newest first.
@@ -67,17 +73,21 @@ export async function GET() {
 
 /**
  * POST /api/projects — record a new project bundle whose files are ALREADY
- * in Drive. File bytes travel browser→Google directly via a resumable
- * session (POST /api/drive/upload-session); this route only records.
+ * in Drive. File bytes travel browser→Google directly via resumable
+ * sessions (POST /api/drive/upload-session); this route only records.
  *
  * Body (JSON): { title, description,
  *   codebase: { driveFileId: string },
  *   preview?: { driveFileId: string } }
  *
- * Folder lock, enforced server-side: every driveFileId is re-read and
- * REFUSED unless it sits inside GOOGLE_DRIVE_UPLOAD_FOLDER_ID. Filenames and
- * sizes stored are Drive's own truth, not client claims. Any file type Drive
- * supports is accepted.
+ * The codebase may be a single file OR a whole folder tree (the top-level
+ * subfolder created inside the locked root by a folder upload). Folder
+ * lock, enforced server-side: every driveFileId is re-read and REFUSED
+ * unless it sits inside GOOGLE_DRIVE_UPLOAD_FOLDER_ID — this holds for
+ * subfolders too, since their parent chain starts at the locked root.
+ * Filenames stored are Drive's own truth, not client claims (folder
+ * projects store the Drive folder name with a trailing "/"). Any file
+ * type Drive supports is accepted.
  */
 export async function POST(req: NextRequest) {
   const user = await requireActiveSession();
@@ -173,7 +183,10 @@ export async function POST(req: NextRequest) {
       previewFileName = previewFile.name;
     }
 
-    // 3. Save Project in DB (Drive's names/sizes, not client claims)
+    // 3. Save Project in DB (Drive's names/sizes, not client claims).
+    // A folder codebase (whole uploaded tree) stores the Drive folder name
+    // with a trailing "/" so cards render it as a folder project.
+    const codebaseIsFolder = codebaseFile.mimeType === DRIVE_FOLDER_MIME;
     const [inserted] = await db
       .insert(projects)
       .values({
@@ -181,8 +194,12 @@ export async function POST(req: NextRequest) {
         title: title.trim(),
         description: description.trim(),
         codebaseDriveId: codebaseFile.id,
-        codebaseFileName: codebaseFile.name,
-        codebaseFileSize: formatFileSize(Number(codebaseFile.size) || 0),
+        codebaseFileName: codebaseIsFolder
+          ? `${codebaseFile.name}/`
+          : codebaseFile.name,
+        codebaseFileSize: codebaseIsFolder
+          ? "Folder"
+          : formatFileSize(Number(codebaseFile.size) || 0),
         previewDriveId,
         previewFileName,
       })

@@ -71,8 +71,8 @@ export default async function ProjectsPage() {
           className="mt-4 max-w-2xl animate-fade-up text-[15px] leading-relaxed text-steel"
           style={{ animationDelay: "160ms" }}
         >
-          Publish, share, and download compressed project packages (.zip, .tar.gz)
-          with preview snapshots. All files are securely stored in your team&apos;s dedicated
+          Publish, share, and download project files of any type — or entire
+          folder trees with their structure preserved — with preview snapshots. All files are securely stored in your team&apos;s dedicated
           Google Drive backend.
         </p>
 

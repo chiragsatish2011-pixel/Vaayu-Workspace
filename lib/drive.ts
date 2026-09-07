@@ -23,8 +23,18 @@ export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 export const GOOGLE_SCOPES = `${DRIVE_SCOPE} ${SHEETS_SCOPE}`;
 export const DRIVE_FOLDER_NAME = "Vaayu-Workspace-Projects";
 
-/** Upload constraints: Google Drive supports all file formats as a general store. */
-export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file limit
+/** Upload constraints: Google Drive's own real technical ceilings.
+ *
+ * The app enforces NOTHING smaller than these. Do not add a lower cap
+ * "just to be safe" — uploads go all the way to Drive's actual limits and
+ * Drive itself rejects anything beyond them (surfaced via
+ * describeDriveApiError / uploadHttpError, never a silent hang).
+ */
+export const DRIVE_MAX_SINGLE_FILE_BYTES = 5 * 1024 ** 4; // 5 TB per file
+export const DRIVE_DAILY_UPLOAD_CAP_BYTES = 750 * 1024 ** 3; // 750 GB/day/account
+/** Drive folders can nest up to 100 levels deep — relative trees deeper than
+ * this headroom are refused with a clear error instead of failing in Drive. */
+export const DRIVE_MAX_RELATIVE_DEPTH = 90;
 /**
  * Google's multipart upload caps at 5 MB per file — anything larger must use
  * a resumable session (createResumableUploadSession). The proxy route
@@ -56,14 +66,18 @@ export function isValidDriveFileId(id: unknown): id is string {
 /**
  * Strip directories, control chars and Drive-hostile characters; keep the
  * extension; cap length. Never trust the client filename.
+ *
+ * Leading dots are PRESERVED (.git, .env, .DS_Store upload under their real
+ * names) — only dot-only names (".", "..") collapse to the fallback, so
+ * they can never act as navigation.
  */
 export function sanitizeFileName(raw: string, fallbackExt: string): string {
   const base = raw.split(/[\\/]/).pop() ?? "";
   let clean = base
     .replace(/[\0-\x1f\x7f<>:"|?*]/g, "")
-    .replace(/^\.+/, "")
     .trim()
     .replace(/\s+/g, " ");
+  if (/^\.+$/.test(clean)) clean = "";
   if (!clean) clean = `upload${fallbackExt}`;
   if (clean.length > 120) {
     clean = clean.slice(0, 120 - fallbackExt.length) + fallbackExt;
@@ -80,27 +94,321 @@ function extensionOf(name: string): string {
 
 /**
  * Validate an uploaded file for Drive storage:
- * - Accepts any file type Google Drive naturally supports (no artificial extension gating)
- * - Rejects empty (0-byte) or corrupted files
- * - Enforces max per-file size limits
- * - Sanitizes filename to prevent directory traversal
+ * - Accepts EVERY file type Google Drive naturally stores (no extension or
+ *   MIME gating — Drive holds arbitrary binary files regardless of suffix).
+ * - Accepts every size up to Drive's own 5 TB single-file ceiling. No
+ *   app-level cap below that exists anywhere in this file.
+ * - Accepts 0-byte files (common in real trees: .gitkeep, empty __init__
+ *   markers, placeholders) — if the user selected it, it goes up.
+ * - Sanitizes the filename so no path can escape the locked folder.
  */
 export function validateUpload(
   originalName: string,
   size: number
 ): { name: string } | { error: string } {
-  if (typeof size !== "number" || size <= 0) {
-    return { error: "Cannot upload empty (0-byte) or corrupt files." };
+  if (typeof size !== "number" || Number.isNaN(size) || size < 0) {
+    return { error: "Invalid file size." };
   }
-  if (size > MAX_UPLOAD_BYTES) {
+  if (size > DRIVE_MAX_SINGLE_FILE_BYTES) {
     return {
-      error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB).`,
+      error:
+        "File exceeds Google Drive's 5 TB single-file limit and cannot be uploaded.",
     };
   }
   const ext = extensionOf(originalName);
   return { name: sanitizeFileName(originalName, ext) };
 }
 
+/* ── Locked-folder subfolder trees (Requirement 1) ───────────────────
+ *
+ * Folder uploads arrive with a client-reported relative path such as
+ * "myproj/src/components/App.tsx". That path is NEVER trusted for
+ * navigation: every segment is sanitized into a plain folder NAME (".",
+ * "..", slashes and Drive-hostile characters cannot survive
+ * sanitization), and the folder chain is built strictly DOWNWARD from the
+ * pre-assigned root folder — every create/find pins parents=[currentId].
+ * By construction no file or folder can land in Drive root or anywhere
+ * outside the locked root, no matter what the client sends.
+ */
+
+/** Split a client-reported relative path into raw segments. Pure. */
+export function splitRelativePath(raw: unknown): string[] {
+  if (typeof raw !== "string") return [];
+  return raw
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Sanitize one folder-name segment. Reuses the file-name sanitizer, so
+ * ".." → "" → "unnamed", "." → "unnamed", "a/b" is impossible (split
+ * already), and control/Drive-hostile chars are stripped. Never returns "".
+ */
+export function sanitizeFolderName(raw: string): string {
+  const cleaned = sanitizeFileName(raw, "");
+  return cleaned === "" || cleaned === "upload" ? "unnamed" : cleaned;
+}
+
+export interface ResolvedUploadDestination {
+  /** Sanitized leaf file name. */
+  fileName: string;
+  /** Sanitized subfolder names, strictly inside the locked root. */
+  dirParts: string[];
+}
+
+/**
+ * Resolve (pure, no network) where an upload lands: the leaf name plus the
+ * subfolder chain under the locked root. Throws DriveValidationError when
+ * the tree would nest deeper than Drive allows.
+ */
+export function resolveUploadDestination(
+  rawRelativePath: unknown,
+  fallbackName: string,
+  size: number
+): ResolvedUploadDestination {
+  const segments = splitRelativePath(rawRelativePath);
+  const rawLeaf =
+    segments.length > 0
+      ? (segments[segments.length - 1] as string)
+      : fallbackName;
+  const checked = validateUpload(rawLeaf, size);
+  if ("error" in checked) {
+    throw new DriveValidationError(`[drive] ${checked.error}`);
+  }
+  const dirParts = segments
+    .slice(0, -1)
+    .map((s) => sanitizeFolderName(s));
+  if (dirParts.length > DRIVE_MAX_RELATIVE_DEPTH) {
+    throw new DriveValidationError(
+      `[drive] Folder is nested too deep (over ${DRIVE_MAX_RELATIVE_DEPTH} levels) — Google Drive allows at most 100 levels of folders.`
+    );
+  }
+  return { fileName: checked.name, dirParts };
+}
+
+/** Escape a value for embedding in a Drive search query string literal. */
+function driveQueryLiteral(value: string): string {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+}
+
+async function findChildFolder(
+  accessToken: string,
+  parentId: string,
+  name: string
+): Promise<string | null> {
+  const q = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and name = ${driveQueryLiteral(name)} and ${driveQueryLiteral(parentId)} in parents and trashed = false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }
+  );
+  const data = (await res.json().catch(() => null)) as {
+    files?: { id?: unknown }[];
+  } | null;
+  if (!res.ok) {
+    throw driveError("find subfolder", res.status, JSON.stringify(data));
+  }
+  const id = data?.files?.[0]?.id;
+  return typeof id === "string" ? id : null;
+}
+
+async function createChildFolder(
+  accessToken: string,
+  parentId: string,
+  name: string
+): Promise<string> {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    }),
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => null)) as {
+    id?: unknown;
+  } | null;
+  if (!res.ok || typeof data?.id !== "string") {
+    throw driveError("create subfolder", res.status, JSON.stringify(data));
+  }
+  return data.id;
+}
+
+/**
+ * Walk/create the sanitized subfolder chain strictly UNDER rootFolderId.
+ * Returns the deepest folder (the file's direct parent) plus the
+ * top-level folder of this tree (null when the file sits directly in the
+ * locked root). Every lookup and create pins parents to the chain, so the
+ * tree cannot escape the locked root.
+ */
+export async function ensureSubfolderPath(
+  accessToken: string,
+  rootFolderId: string,
+  dirParts: string[]
+): Promise<{ parentFolderId: string; topFolderId: string | null }> {
+  if (!isValidDriveFileId(rootFolderId)) {
+    throw new DriveValidationError(
+      `[drive] Invalid destination folder ID (${rootFolderId}).`
+    );
+  }
+  let current = rootFolderId;
+  let top: string | null = null;
+  for (const part of dirParts) {
+    const existing = await findChildFolder(accessToken, current, part);
+    const id = existing ?? (await createChildFolder(accessToken, current, part));
+    if (!isValidDriveFileId(id)) {
+      throw driveError("resolve subfolder", 502, JSON.stringify({ id }));
+    }
+    if (!top) top = id;
+    current = id;
+  }
+  return { parentFolderId: current, topFolderId: top };
+}
+
+/* ── Drive-limit error mapping (real ceilings, clear messages) ───────
+ *
+ * Google Drive enforces a 5 TB single-file ceiling and a ~750 GB/day
+ * account-wide upload cap. When Drive rejects an upload for those (or any
+ * other) reasons, the raw API response must reach the user as a clear,
+ * specific message — never a silent hang or a generic crash.
+ */
+
+function extractGoogleMessage(body: string): string | null {
+  try {
+    const data = JSON.parse(body) as {
+      error?: { message?: unknown; errors?: { reason?: unknown }[] };
+    };
+    const msg = data?.error?.message;
+    return typeof msg === "string" && msg.trim() ? msg.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractGoogleReason(body: string): string {
+  try {
+    const data = JSON.parse(body) as {
+      error?: { errors?: { reason?: unknown }[] };
+    };
+    const reason = data?.error?.errors?.[0]?.reason;
+    return typeof reason === "string" ? reason : "";
+  } catch {
+    return "";
+  }
+}
+
+/** True when a Google 403/429 means the account hit its upload quota. */
+function isDailyUploadCapSignal(status: number, body: string): boolean {
+  if (status !== 403 && status !== 429) return false;
+  const reason = extractGoogleReason(body);
+  // Storage-full is separate (free up space vs. wait 24h) — never label it
+  // as the daily cap.
+  if (reason === "storageQuotaExceeded") return false;
+  const message = extractGoogleMessage(body) ?? "";
+  if (/storage quota/i.test(message)) return false;
+  if (
+    reason === "rateLimitExceeded" ||
+    reason === "userRateLimitExceeded" ||
+    reason === "dailyLimitExceeded" ||
+    reason === "quotaExceeded" ||
+    reason === "downloadQuotaExceeded"
+  ) {
+    return true;
+  }
+  const hay = `${reason} ${message}`.toLowerCase();
+  return (
+    hay.includes("daily limit") ||
+    hay.includes("daily upload") ||
+    hay.includes("upload limit") ||
+    hay.includes("rate limit") ||
+    hay.includes("user rate") ||
+    (hay.includes("quota") && hay.includes("exceeded"))
+  );
+}
+
+export const DRIVE_DAILY_CAP_MESSAGE =
+  "Google Drive's daily upload limit (750 GB per account per day) has been reached. No more uploads will succeed until it resets in about 24 hours. Please try again tomorrow.";
+export const DRIVE_SINGLE_FILE_LIMIT_MESSAGE =
+  "This file exceeds Google Drive's 5 TB single-file limit and cannot be uploaded.";
+export const DRIVE_STORAGE_FULL_MESSAGE =
+  "Google Drive storage is full, so this upload was rejected. Free up space in Drive and try again.";
+
+/**
+ * Turn a raw Google API failure into a user-facing message. Pure (no
+ * network) — safe to unit-test with recorded Drive responses.
+ */
+export function describeDriveApiError(status: number, body: string): string {
+  const safeBody = body.slice(0, 500);
+  // Storage-full is its own condition (free up space) — check before the
+  // daily-cap matcher, whose quota wording would otherwise swallow it.
+  const reason = extractGoogleReason(safeBody);
+  const message = extractGoogleMessage(safeBody);
+  if (reason === "storageQuotaExceeded") return DRIVE_STORAGE_FULL_MESSAGE;
+  if (isDailyUploadCapSignal(status, safeBody)) return DRIVE_DAILY_CAP_MESSAGE;
+  if (status === 413) return DRIVE_SINGLE_FILE_LIMIT_MESSAGE;
+  if (message) {
+    if (/storage quota/i.test(message)) return DRIVE_STORAGE_FULL_MESSAGE;
+    if (/larger than.*max|exceeds.*(maximum|5\s?tb)/i.test(message)) {
+      return DRIVE_SINGLE_FILE_LIMIT_MESSAGE;
+    }
+    return `Drive rejected the upload: ${message.slice(0, 200)}`;
+  }
+  return `Drive rejected the upload (HTTP ${status}). Please retry.`;
+}
+
+/**
+ * Map any upload-path throw into an HTTP { status, message } for API
+ * routes. Validation problems → 400, exhausted daily quota → 429,
+ * oversized single file → 413, everything else → 502 with Drive's own
+ * message text when Google supplied one (never a bare generic crash).
+ */
+export function uploadHttpError(err: unknown): {
+  status: number;
+  message: string;
+} {
+  if (err instanceof DriveValidationError) {
+    const message = err.message.replace(/^\[drive\] /, "");
+    if (/5\s?TB single-file/.test(message)) {
+      return { status: 413, message };
+    }
+    if (/daily upload limit \(750/.test(message)) {
+      return { status: 429, message };
+    }
+    return { status: 400, message };
+  }
+  const text = err instanceof Error ? err.message : "";
+  const match = text.match(/\(HTTP (\d{3})\): ([\s\S]*)$/);
+  const status = match ? Number(match[1]) : 0;
+  const body = (match?.[2] ?? "").slice(0, 500);
+  if (status === 403 || status === 429) {
+    if (isDailyUploadCapSignal(status, body)) {
+      return { status: 429, message: DRIVE_DAILY_CAP_MESSAGE };
+    }
+    const message = extractGoogleMessage(body);
+    return {
+      status: 502,
+      message: message
+        ? `Drive rejected the upload: ${message.slice(0, 200)}`
+        : "Drive upload failed. Please try again.",
+    };
+  }
+  if (status === 413) return { status: 413, message: DRIVE_SINGLE_FILE_LIMIT_MESSAGE };
+  if (status >= 400 && status < 500) {
+    return { status: 502, message: describeDriveApiError(status, body) };
+  }
+  return { status: 502, message: "Drive upload failed. Please try again." };
+}
 
 function driveError(action: string, status: number, body: string): Error {
   // Log status + Google's error summary, never tokens.
@@ -242,15 +550,24 @@ export interface ResumableSession {
   sessionUri: string;
   /** Sanitized file name the session was created with. */
   fileName: string;
+  /** Deepest locked-root subfolder the bytes will land in. */
+  parentFolderId: string;
+  /** Top-level subfolder of this tree inside the locked root (null when the
+   * file sits directly in the locked root). */
+  topFolderId: string | null;
 }
 
 /**
  * Mint a resumable upload session for direct browser→Google byte transfer.
  *
- * Folder lock is enforced HERE, server-side: the session metadata pins
- * parents=[folderId], so bytes sent to the session URI cannot land anywhere
- * else no matter what the client does. The session URI itself is a
- * capability URL (no Google credentials travel to the browser).
+ * Folder lock is enforced HERE, server-side: an optional client-reported
+ * `relativePath` (e.g. "myproj/src/a.ts" from a folder pick or drop) is
+ * sanitized and resolved into subfolders strictly INSIDE folderId, and the
+ * session metadata pins parents=[deepestFolderId] — so bytes sent to the
+ * session URI cannot land anywhere else no matter what the client does.
+ * The session URI itself is a capability URL (no Google credentials travel
+ * to the browser). Any file type and any size up to Drive's own 5 TB
+ * ceiling is accepted.
  */
 export async function createResumableUploadSession(
   accessToken: string,
@@ -259,17 +576,19 @@ export async function createResumableUploadSession(
     mimeType: string;
     size: number;
     folderId: string;
+    relativePath?: unknown;
   }
 ): Promise<ResumableSession> {
-  const checked = validateUpload(args.name, args.size);
-  if ("error" in checked) {
-    throw new DriveValidationError(`[drive] ${checked.error}`);
-  }
-  if (!isValidDriveFileId(args.folderId)) {
-    throw new DriveValidationError(
-      `[drive] Invalid destination folder ID (${args.folderId}).`
-    );
-  }
+  const dest = resolveUploadDestination(
+    args.relativePath,
+    args.name,
+    args.size
+  );
+  const { parentFolderId, topFolderId } = await ensureSubfolderPath(
+    accessToken,
+    args.folderId,
+    dest.dirParts
+  );
   const mimeType = args.mimeType || "application/octet-stream";
   const res = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
@@ -282,9 +601,9 @@ export async function createResumableUploadSession(
         "X-Upload-Content-Length": String(args.size),
       },
       body: JSON.stringify({
-        name: checked.name,
+        name: dest.fileName,
         mimeType,
-        parents: [args.folderId],
+        parents: [parentFolderId],
       }),
       cache: "no-store",
     }
@@ -294,7 +613,12 @@ export async function createResumableUploadSession(
     const body = await res.text().catch(() => "");
     throw driveError("create resumable session", res.status, body);
   }
-  return { sessionUri, fileName: checked.name };
+  return {
+    sessionUri,
+    fileName: dest.fileName,
+    parentFolderId,
+    topFolderId,
+  };
 }
 
 export interface VerifiedDriveFile {

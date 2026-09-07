@@ -61,15 +61,40 @@ export function useUploadMode(): [UploadMode, (mode: UploadMode) => void] {
 /* ── Direct browser→Google chunked upload ──────────────────────────── */
 
 function googleErrorMessage(status: number, body: string): string {
+  let message: string | null = null;
+  let reason = "";
   try {
     const data = JSON.parse(body) as {
-      error?: { message?: unknown };
+      error?: { message?: unknown; errors?: { reason?: unknown }[] };
     };
     if (typeof data?.error?.message === "string" && data.error.message) {
-      return `Drive rejected the upload: ${data.error.message.slice(0, 160)}`;
+      message = data.error.message;
     }
+    const r = data?.error?.errors?.[0]?.reason;
+    if (typeof r === "string") reason = r;
   } catch {
     // Fall through to the generic message.
+  }
+  const hay = `${reason} ${message ?? ""}`.toLowerCase();
+  if (
+    status === 403 &&
+    (reason === "rateLimitExceeded" ||
+      reason === "userRateLimitExceeded" ||
+      reason === "dailyLimitExceeded" ||
+      reason === "quotaExceeded" ||
+      hay.includes("daily limit") ||
+      hay.includes("upload limit") ||
+      hay.includes("rate limit"))
+  ) {
+    return "Google Drive's daily upload limit (750 GB per day) has been reached. No more uploads will succeed until it resets in about 24 hours. Please try again tomorrow.";
+  }
+  if (status === 413 || /storage quota/i.test(hay)) {
+    return status === 413
+      ? "This file exceeds Google Drive's 5 TB single-file limit and cannot be uploaded."
+      : "Google Drive storage is full, so this upload was rejected. Free up space in Drive and try again.";
+  }
+  if (message) {
+    return `Drive rejected the upload: ${message.slice(0, 160)}`;
   }
   return `Drive rejected the upload (HTTP ${status}). Please retry.`;
 }
@@ -126,14 +151,60 @@ function putChunk(
 }
 
 /**
+ * PUT a 0-byte file to a resumable session: a single empty request with
+ * `Content-Range: bytes *\/0` completes it. (The chunk loop below would run
+ * zero iterations for empty files, so they need this dedicated path —
+ * empty files are real uploads: .gitkeep, placeholders, etc.)
+ */
+function putEmptyFile(sessionUri: string): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", sessionUri);
+    xhr.setRequestHeader("Content-Range", "bytes */0");
+    xhr.onload = () => {
+      if (xhr.status === 200 || xhr.status === 201) {
+        try {
+          const data = JSON.parse(xhr.responseText) as { id?: unknown };
+          resolve(typeof data.id === "string" ? data.id : null);
+        } catch {
+          reject(new Error("Drive did not return a file record."));
+        }
+        return;
+      }
+      reject(new Error(googleErrorMessage(xhr.status, xhr.responseText)));
+    };
+    xhr.onerror = () =>
+      reject(
+        new Error("Network error during upload. Check your connection and retry.")
+      );
+    xhr.ontimeout = () =>
+      reject(new Error("Upload timed out. Please retry."));
+    xhr.timeout = 120000;
+    xhr.send(new Blob([]));
+  });
+}
+
+/**
  * Upload a File's bytes straight to Google Drive via a server-minted
  * resumable session (folder lock pinned server-side at mint time).
  * onProgress receives cumulative bytes sent — always real XHR numbers.
+ *
+ * Pass `relativePath` (e.g. "myproj/src/a.ts" from a folder pick or
+ * drop) to recreate the file's subfolders strictly inside the locked
+ * Drive folder. Every file type and every size up to Drive's own 5 TB
+ * ceiling is accepted — the app adds no caps of its own.
  */
 export async function uploadFileToDrive(
   file: File,
-  onProgress: (sentBytes: number) => void
-): Promise<{ driveFileId: string; name: string; size: number }> {
+  onProgress: (sentBytes: number) => void,
+  opts?: { relativePath?: string }
+): Promise<{
+  driveFileId: string;
+  name: string;
+  size: number;
+  parentFolderId: string | null;
+  topFolderId: string | null;
+}> {
   const mintRes = await fetch("/api/drive/upload-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -141,11 +212,14 @@ export async function uploadFileToDrive(
       name: file.name,
       size: file.size,
       mimeType: file.type || "application/octet-stream",
+      ...(opts?.relativePath ? { relativePath: opts.relativePath } : {}),
     }),
   });
   const mint = (await mintRes.json().catch(() => null)) as {
     sessionUri?: unknown;
     fileName?: unknown;
+    parentFolderId?: unknown;
+    topFolderId?: unknown;
     error?: unknown;
   } | null;
   if (!mintRes.ok || typeof mint?.sessionUri !== "string") {
@@ -154,6 +228,20 @@ export async function uploadFileToDrive(
         ? mint.error
         : "Could not start the upload session."
     );
+  }
+  const parentFolderId =
+    typeof mint.parentFolderId === "string" ? mint.parentFolderId : null;
+  const topFolderId =
+    typeof mint.topFolderId === "string" ? mint.topFolderId : null;
+  const name = typeof mint.fileName === "string" ? mint.fileName : file.name;
+
+  if (file.size === 0) {
+    onProgress(0);
+    const fileId = await putEmptyFile(mint.sessionUri);
+    if (!fileId) {
+      throw new Error("Drive did not return a file record.");
+    }
+    return { driveFileId: fileId, name, size: 0, parentFolderId, topFolderId };
   }
 
   let sent = 0;
@@ -180,8 +268,10 @@ export async function uploadFileToDrive(
       }
       return {
         driveFileId: result.fileId,
-        name: typeof mint.fileName === "string" ? mint.fileName : file.name,
+        name,
         size: file.size,
+        parentFolderId,
+        topFolderId,
       };
     }
   }

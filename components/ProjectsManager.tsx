@@ -1,8 +1,16 @@
 ﻿"use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/Badge";
+import {
+  collectFilesFromDrop,
+  collectFilesFromInput,
+  pickedBatchBytes,
+  pickedBatchRoots,
+  type PickedUploadFile,
+} from "@/components/folderWalk";
+import { formatBytes } from "@/components/UploadProgressBar";
 import {
   BoxIcon,
   CheckIcon,
@@ -57,7 +65,13 @@ export function ProjectsManager({
   // Form state
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [codebaseMode, setCodebaseMode] = useState<"file" | "folder">("file");
   const [codebaseFile, setCodebaseFile] = useState<File | null>(null);
+  // Folder mode: the ENTIRE picked/dropped tree — every file at every
+  // depth, zero filtering. Uploaded as one batch preserving relativePath.
+  const [folderFiles, setFolderFiles] = useState<PickedUploadFile[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [scanningDrop, setScanningDrop] = useState(false);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +86,15 @@ export function ProjectsManager({
   const router = useRouter();
 
   const codebaseInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const previewInputRef = useRef<HTMLInputElement>(null);
+
+  // The folder picker needs a real folder-select input: React has no
+  // webkitdirectory prop, so the attribute is set imperatively. The OS
+  // folder picker then returns every file with webkitRelativePath intact.
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, [isModalOpen]);
 
   const handlePreviewChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,13 +109,62 @@ export function ProjectsManager({
     const file = e.target.files?.[0];
     if (file) {
       setCodebaseFile(file);
+      setFolderFiles([]);
     }
+  };
+
+  const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = collectFilesFromInput(e.target.files);
+    if (picked.length > 0) {
+      // One folder picked = the whole tree as one batch. Nothing is
+      // filtered out — every nested file at every depth is kept.
+      setFolderFiles(picked);
+      setCodebaseFile(null);
+      if (codebaseInputRef.current) codebaseInputRef.current.value = "";
+      setFormError(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    if (codebaseMode !== "folder") return;
+    setScanningDrop(true);
+    setFormError(null);
+    try {
+      // Recursive DataTransferItem walk: a dropped folder resolves to its
+      // ENTIRE contents (all files, all subfolders, all depths) — never a
+      // single drilled-down file.
+      const picked = await collectFilesFromDrop(e.dataTransfer);
+      if (picked.length === 0) {
+        setFormError("That drop contained no files — try a different folder.");
+        return;
+      }
+      setFolderFiles(picked);
+      setCodebaseFile(null);
+      if (codebaseInputRef.current) codebaseInputRef.current.value = "";
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Could not read the dropped folder."
+      );
+    } finally {
+      setScanningDrop(false);
+    }
+  };
+
+  const clearFolderSelection = () => {
+    setFolderFiles([]);
+    if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
   const resetForm = () => {
     setTitle("");
     setDescription("");
+    setCodebaseMode("file");
     setCodebaseFile(null);
+    setFolderFiles([]);
+    setDragActive(false);
+    setScanningDrop(false);
     setPreviewFile(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -166,6 +237,38 @@ export function ProjectsManager({
     router.refresh();
   };
 
+  /**
+   * Upload one picked folder tree sequentially inside a caller-owned
+   * tracked job. Each file carries its relativePath so the server
+   * recreates the exact subfolder structure inside the locked Drive
+   * folder. Returns the tree's top-level Drive folder id (for the project
+   * record) plus every uploaded file id. Throws the first upload error.
+   */
+  const runFolderUpload = async (
+    picked: PickedUploadFile[],
+    report: (sentBytes: number) => void,
+    sentBaseRef: { value: number }
+  ): Promise<{ topFolderId: string | null; fileIds: string[] }> => {
+    let topFolderId: string | null = null;
+    const fileIds: string[] = [];
+    for (const item of picked) {
+      const uploaded = await uploadFileToDrive(
+        item.file,
+        (sent) => {
+          report(sentBaseRef.value + sent);
+        },
+        { relativePath: item.relativePath }
+      );
+      sentBaseRef.value += item.file.size;
+      report(sentBaseRef.value);
+      fileIds.push(uploaded.driveFileId);
+      if (!topFolderId && uploaded.topFolderId) {
+        topFolderId = uploaded.topFolderId;
+      }
+    }
+    return { topFolderId, fileIds };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -176,23 +279,67 @@ export function ProjectsManager({
       setFormError("Project description is required.");
       return;
     }
-    if (!codebaseFile) {
+    const isFolderMode = codebaseMode === "folder";
+    if (!isFolderMode && !codebaseFile) {
       setFormError("Please select a project file.");
       return;
     }
+    if (isFolderMode && folderFiles.length === 0) {
+      setFormError(
+        "Please choose a folder or drop one below — its entire contents will upload."
+      );
+      return;
+    }
 
-    const files = [
-      { key: "codebase", file: codebaseFile },
+    const singleFiles = [
+      ...(!isFolderMode && codebaseFile
+        ? [{ key: "codebase", file: codebaseFile }]
+        : []),
       ...(previewFile ? [{ key: "preview", file: previewFile }] : []),
     ];
+    const totalBytes =
+      (isFolderMode ? pickedBatchBytes(folderFiles) : 0) +
+      singleFiles.reduce((sum, f) => sum + f.file.size, 0);
     const snapshot = { title: title.trim(), description: description.trim() };
+    const jobLabel = isFolderMode
+      ? `Publish "${snapshot.title}" (${folderFiles.length} files)`
+      : `Publish "${snapshot.title}"`;
 
     // Foreground mode (Settings opt-in): modal stays open with live progress.
     if (uploadMode === "foreground") {
       setSubmitting(true);
       setFormError(null);
       try {
-        const ids = await uploadBatch(files);
+        // Single-file mode reuses the per-field batch; folder mode uploads
+        // the whole tree (plus the optional preview) inside one batch job.
+        const ids: Record<string, { driveFileId: string; name: string; size: number }> =
+          isFolderMode ? {} : await uploadBatch(singleFiles);
+        if (isFolderMode) {
+          const folderJob = track(jobLabel, totalBytes, async (report) => {
+            const sentBaseRef = { value: 0 };
+            const tree = await runFolderUpload(folderFiles, report, sentBaseRef);
+            // Preview (if any) uploads after the tree, continuing progress.
+            for (const { key, file } of singleFiles) {
+              const uploaded = await uploadFileToDrive(file, (sent) => {
+                report(sentBaseRef.value + sent);
+              });
+              sentBaseRef.value += file.size;
+              report(sentBaseRef.value);
+              ids[key] = uploaded;
+            }
+            const codebaseId = tree.topFolderId ?? tree.fileIds[0];
+            if (!codebaseId) {
+              throw new Error("Folder upload produced no files.");
+            }
+            ids.codebase = {
+              driveFileId: codebaseId,
+              name: "",
+              size: 0,
+            };
+          });
+          setBatchIds((prev) => [...(prev ?? []), folderJob.id]);
+          await folderJob.finished;
+        }
         setSavingRecord(true);
         const project = await recordProject(snapshot, ids);
         handleProjectLanded(project);
@@ -211,22 +358,30 @@ export function ProjectsManager({
     // Background (default): close immediately, finish in the global toast.
     handleCloseModal();
     const { finished } = track(
-      `Publish "${snapshot.title}"`,
-      files.reduce((sum, f) => sum + f.file.size, 0),
+      jobLabel,
+      totalBytes,
       async (report, setFinalizing) => {
-        let sentBase = 0;
+        const sentBaseRef = { value: 0 };
         const ids: Record<string, { driveFileId: string; name: string; size: number }> = {};
-        for (const { key, file } of files) {
+        if (isFolderMode) {
+          const tree = await runFolderUpload(folderFiles, report, sentBaseRef);
+          const codebaseId = tree.topFolderId ?? tree.fileIds[0];
+          if (!codebaseId) {
+            throw new Error("Folder upload produced no files.");
+          }
+          ids.codebase = { driveFileId: codebaseId, name: "", size: 0 };
+        }
+        for (const { key, file } of singleFiles) {
           const uploaded = await uploadFileToDrive(file, (sent) => {
-            report(sentBase + sent);
+            report(sentBaseRef.value + sent);
           });
-          sentBase += file.size;
-          report(sentBase);
+          sentBaseRef.value += file.size;
+          report(sentBaseRef.value);
           ids[key] = uploaded;
         }
         setFinalizing();
         const project = await recordProject(snapshot, ids);
-        report(files.reduce((sum, f) => sum + f.file.size, 0));
+        report(totalBytes);
         handleProjectLanded(project);
       }
     );
@@ -316,7 +471,7 @@ export function ProjectsManager({
           <p className="mt-2 text-sm text-steel max-w-md mx-auto">
             {searchQuery
               ? "Try tweaking your search term to find what you need."
-              : "Publish your first project file with description, optional preview image, and any file type directly to Google Drive."}
+              : "Publish your first project — a single file of any type, or an entire folder tree with its structure preserved, stored directly in Google Drive."}
           </p>
           {!searchQuery && (
             <button
@@ -333,6 +488,10 @@ export function ProjectsManager({
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((p) => {
             const canDelete = currentUser.role === "admin" || currentUser.id === p.userId;
+            // Folder projects store the Drive folder name with a trailing
+            // "/" (see POST /api/projects) — they browse in Drive, they
+            // don't download as one file.
+            const isFolderProject = p.codebaseFileName.endsWith("/");
             const previewImageUrl = p.previewDriveId
               ? `/api/drive/download?id=${encodeURIComponent(p.previewDriveId)}`
               : null;
@@ -347,11 +506,21 @@ export function ProjectsManager({
                   <div className="relative aspect-video w-full overflow-hidden bg-fog border-b border-hairline-soft">
                     {previewImageUrl ? (
                       <div className="relative h-full w-full group/img cursor-pointer" onClick={() => setLightboxImage({ url: previewImageUrl, title: p.title })}>
+                        {/* Placeholder stays underneath; a non-image preview
+                            hides itself on error and reveals this banner. */}
+                        <div className="absolute inset-0 flex h-full w-full items-center justify-center bg-gradient-to-br from-[#ff5530]/10 via-[#f9603a]/5 to-[#ea5ec1]/10">
+                          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-canvas border border-hairline-soft text-steel shadow-sm">
+                            <BoxIcon className="h-6 w-6 text-[#ff5530]" />
+                          </div>
+                        </div>
                         <img
                           src={previewImageUrl}
                           alt={p.title}
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-105"
+                          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-105"
                           loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
                         />
                         <div className="absolute inset-0 bg-ink/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                           <span className="rounded-full bg-white/90 backdrop-blur-sm px-3 py-1 text-xs font-semibold text-ink shadow-sm">
@@ -370,9 +539,11 @@ export function ProjectsManager({
                     {/* Format Badge */}
                     <div className="absolute top-3 right-3">
                       <span className="rounded-full bg-ink/80 backdrop-blur-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                        {(p.codebaseFileName.split(".").pop() ?? "file")
-                          .toUpperCase()
-                          .slice(0, 8)}
+                        {isFolderProject
+                          ? "FOLDER"
+                          : (p.codebaseFileName.split(".").pop() ?? "file")
+                              .toUpperCase()
+                              .slice(0, 8)}
                       </span>
                     </div>
                   </div>
@@ -415,14 +586,21 @@ export function ProjectsManager({
 
                 {/* Card Footer & Download */}
                 <div className="border-t border-hairline-soft p-5 bg-fog/40 flex flex-col gap-3">
-                  <a
-                    href={`/api/drive/download?id=${encodeURIComponent(p.codebaseDriveId)}`}
-                    download
-                    className="press flex items-center justify-center gap-2 w-full rounded-2xl bg-ink py-2.5 px-4 text-xs font-semibold text-white shadow-sm hover:bg-charcoal transition-colors"
-                  >
-                    <BoxIcon className="h-4 w-4" />
-                    Download Codebase ({p.codebaseFileSize})
-                  </a>
+                  {isFolderProject ? (
+                    <p className="flex items-center justify-center gap-2 w-full rounded-2xl border border-hairline-soft bg-fog py-2.5 px-4 text-xs font-semibold text-steel">
+                      <FolderIcon className="h-4 w-4" />
+                      Folder project — browse files in Drive
+                    </p>
+                  ) : (
+                    <a
+                      href={`/api/drive/download?id=${encodeURIComponent(p.codebaseDriveId)}`}
+                      download
+                      className="press flex items-center justify-center gap-2 w-full rounded-2xl bg-ink py-2.5 px-4 text-xs font-semibold text-white shadow-sm hover:bg-charcoal transition-colors"
+                    >
+                      <BoxIcon className="h-4 w-4" />
+                      Download Codebase ({p.codebaseFileSize})
+                    </a>
+                  )}
 
                   {/* Author meta */}
                   <div className="flex items-center justify-between text-xs text-stone pt-1">
@@ -510,38 +688,143 @@ export function ProjectsManager({
                 />
               </div>
 
-              {/* Codebase File (any Drive-supported type) */}
+              {/* Codebase: single file OR entire folder tree */}
               <div>
                 <label className="block font-mono text-xs uppercase tracking-wider text-steel mb-1.5 font-semibold">
-                  Project File (any type · max 500MB) *
+                  Project Content *
                 </label>
-                <div className="rounded-2xl border-2 border-dashed border-hairline hover:border-ink/60 bg-fog/50 p-4 transition-colors">
-                  <input
-                    ref={codebaseInputRef}
-                    type="file"
-                    required
-                    onChange={handleCodebaseChange}
-                    className="block w-full text-xs text-steel file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-ink file:text-white hover:file:bg-charcoal cursor-pointer"
-                  />
-                  {codebaseFile && (
-                    <p className="mt-2 text-xs font-mono text-ink">
-                      Selected: <strong>{codebaseFile.name}</strong> (
-                      {(codebaseFile.size / (1024 * 1024)).toFixed(2)} MB)
-                    </p>
-                  )}
+                <div className="mb-2 grid grid-cols-2 gap-2 rounded-2xl border border-hairline-soft bg-fog/50 p-1">
+                  {(["file", "folder"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => {
+                        setCodebaseMode(mode);
+                        setFormError(null);
+                      }}
+                      aria-pressed={codebaseMode === mode}
+                      className={`rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${
+                        codebaseMode === mode
+                          ? "bg-ink text-white shadow-sm"
+                          : "text-steel hover:text-ink"
+                      }`}
+                    >
+                      {mode === "file" ? "Single file" : "Entire folder"}
+                    </button>
+                  ))}
                 </div>
+
+                {codebaseMode === "file" ? (
+                  <div className="rounded-2xl border-2 border-dashed border-hairline hover:border-ink/60 bg-fog/50 p-4 transition-colors">
+                    <input
+                      ref={codebaseInputRef}
+                      type="file"
+                      required={codebaseMode === "file"}
+                      onChange={handleCodebaseChange}
+                      className="block w-full text-xs text-steel file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-ink file:text-white hover:file:bg-charcoal cursor-pointer"
+                    />
+                    {codebaseFile && (
+                      <p className="mt-2 text-xs font-mono text-ink">
+                        Selected: <strong>{codebaseFile.name}</strong> (
+                        {formatBytes(codebaseFile.size)})
+                      </p>
+                    )}
+                    <p className="mt-1.5 text-[11px] text-stone">
+                      Any file type, up to Google Drive&apos;s 5 TB per-file limit.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={handleDrop}
+                    className={`rounded-2xl border-2 border-dashed p-4 transition-colors ${
+                      dragActive
+                        ? "border-ink bg-fog"
+                        : "border-hairline hover:border-ink/60 bg-fog/50"
+                    }`}
+                  >
+                    <input
+                      ref={folderInputRef}
+                      type="file"
+                      onChange={handleFolderInputChange}
+                      className="hidden"
+                      aria-label="Choose a folder to upload"
+                    />
+                    <div className="flex flex-col items-center gap-2 py-2 text-center">
+                      <p className="text-sm font-semibold text-ink">
+                        {scanningDrop
+                          ? "Reading dropped folder…"
+                          : "Drop a folder here, or"}
+                      </p>
+                      {!scanningDrop && (
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          onClick={() => folderInputRef.current?.click()}
+                          className="rounded-full bg-ink px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-charcoal disabled:opacity-50 transition-colors"
+                        >
+                          Choose Folder…
+                        </button>
+                      )}
+                      <p className="max-w-sm text-[11px] leading-relaxed text-stone">
+                        The picked folder always uploads in full — every file,
+                        every subfolder, every depth level. Nothing is skipped.
+                        Structure is recreated inside the team Drive folder.
+                      </p>
+                    </div>
+                    {folderFiles.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-hairline-soft bg-canvas p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-mono text-ink">
+                            <strong>{folderFiles.length}</strong>{" "}
+                            {folderFiles.length === 1 ? "file" : "files"} ·{" "}
+                            {formatBytes(pickedBatchBytes(folderFiles))}
+                            <span className="text-stone">
+                              {" "}
+                              — {pickedBatchRoots(folderFiles).join(", ")}
+                            </span>
+                          </p>
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={clearFolderSelection}
+                            className="shrink-0 rounded-full border border-hairline px-3 py-1 text-[11px] font-semibold text-steel transition-colors hover:border-ink hover:text-ink"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <ul className="mt-2 max-h-28 space-y-0.5 overflow-y-auto font-mono text-[11px] text-steel">
+                          {folderFiles.slice(0, 8).map((f) => (
+                            <li key={f.relativePath} className="truncate">
+                              {f.relativePath}
+                            </li>
+                          ))}
+                          {folderFiles.length > 8 && (
+                            <li className="text-stone">
+                              …and {folderFiles.length - 8} more
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Preview Image */}
+              {/* Preview File (optional — any type Drive stores) */}
               <div>
                 <label className="block font-mono text-xs uppercase tracking-wider text-steel mb-1.5 font-semibold">
-                  Preview Image (optional — image files · max 500MB)
+                  Preview File (optional — any type)
                 </label>
                 <div className="rounded-2xl border-2 border-dashed border-hairline hover:border-ink/60 bg-fog/50 p-4 transition-colors">
                   <input
                     ref={previewInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
                     onChange={handlePreviewChange}
                     className="block w-full text-xs text-steel file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-fog file:text-ink hover:file:bg-hairline cursor-pointer"
                   />

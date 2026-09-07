@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   createResumableUploadSession,
-  DriveValidationError,
   getDriveAccessToken,
+  uploadHttpError,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireApiSession } from "@/lib/session";
@@ -12,14 +12,21 @@ export const runtime = "nodejs";
 /**
  * POST /api/drive/upload-session — mint a resumable upload session.
  *
- * Body (JSON): { name, size, mimeType }. Any signed-in user may mint one.
+ * Body (JSON): { name, size, mimeType, relativePath? }. Any signed-in user
+ * may mint one.
  *
- * The folder lock is enforced here, server-side: the session pins
- * parents=[GOOGLE_DRIVE_UPLOAD_FOLDER_ID], so bytes the browser PUTs to the
- * returned sessionUri cannot land anywhere else. The session URI is a
- * capability URL — no Google credentials reach the browser. Use it for files
- * of any size (Google multipart caps at 5 MB; sessions scale to our 500 MB
- * app limit and beyond).
+ * The folder lock is enforced here, server-side: `relativePath` (the
+ * file's path inside a dropped/picked folder, e.g. "myproj/src/a.ts") is
+ * sanitized and resolved into subfolders strictly INSIDE
+ * GOOGLE_DRIVE_UPLOAD_FOLDER_ID, and the session pins
+ * parents=[deepestSubfolder] — so bytes the browser PUTs to the returned
+ * sessionUri cannot land anywhere else. The session URI is a capability
+ * URL — no Google credentials reach the browser.
+ *
+ * No app-level size/type caps: any file type Drive stores and any size up
+ * to Drive's own 5 TB single-file ceiling is accepted. Drive-side
+ * rejections (5 TB breach, 750 GB/day account cap, full storage) are
+ * forwarded with clear, specific messages via uploadHttpError.
  */
 export async function POST(req: Request) {
   const user = await requireApiSession();
@@ -42,15 +49,16 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: "Invalid JSON. Send { name, size, mimeType }." },
+      { error: "Invalid JSON. Send { name, size, mimeType, relativePath? }." },
       { status: 400 }
     );
   }
 
-  const { name, size, mimeType } = (body ?? {}) as {
+  const { name, size, mimeType, relativePath } = (body ?? {}) as {
     name?: unknown;
     size?: unknown;
     mimeType?: unknown;
+    relativePath?: unknown;
   };
 
   try {
@@ -62,24 +70,25 @@ export async function POST(req: Request) {
     const session = await createResumableUploadSession(accessToken, {
       name: typeof name === "string" ? name : "upload",
       mimeType: typeof mimeType === "string" ? mimeType : "",
-      size: typeof size === "number" ? size : 0,
+      size: typeof size === "number" ? size : NaN,
       folderId: drive.folderId,
+      relativePath,
     });
     console.log(
-      `[drive/upload-session] session for (${session.fileName}) into folder (${drive.folderId}) by (${user.email})`
+      `[drive/upload-session] session for (${session.fileName}) into folder (${session.parentFolderId}) by (${user.email})`
     );
     return NextResponse.json(
-      { sessionUri: session.sessionUri, fileName: session.fileName },
+      {
+        sessionUri: session.sessionUri,
+        fileName: session.fileName,
+        parentFolderId: session.parentFolderId,
+        topFolderId: session.topFolderId,
+      },
       { status: 201 }
     );
   } catch (err) {
-    if (err instanceof DriveValidationError) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
-    }
-    console.error("[drive/upload-session]", err);
-    return NextResponse.json(
-      { error: "Could not start the upload session. Please try again." },
-      { status: 502 }
-    );
+    const mapped = uploadHttpError(err);
+    if (mapped.status >= 500) console.error("[drive/upload-session]", err);
+    return NextResponse.json({ error: mapped.message }, { status: mapped.status });
   }
 }
