@@ -344,7 +344,7 @@ export function ProjectsManager({
    */
   const runFolderUpload = async (
     picked: PickedUploadFile[],
-    report: (sentBytes: number) => void,
+    report: (sentBytes: number, files?: FileProgress) => void,
     sentBaseRef: { value: number }
   ): Promise<{
     topFolderId: string | null;
@@ -372,7 +372,13 @@ export function ProjectsManager({
       }
       // sentBaseRef tracks completed bytes for caller's final consistent value,
       // but we report aggregate for UI smoothness
-      report(agg);
+      // File counts ride along so the toast shows "N of 3468 files"
+      // instead of "0 of 1" (one batch job = thousands of files).
+      report(agg, {
+        done: perFileDone.size,
+        total: picked.length,
+        failed: failed.length,
+      });
     };
 
     // Shared queue index
@@ -442,6 +448,9 @@ export function ProjectsManager({
       }
     };
 
+    // Emit totals before the first byte so the toast reads "0 of N files"
+    // from the first paint instead of flashing "0 of 1".
+    report(sentBaseRef.value, { done: 0, total: picked.length, failed: 0 });
     // Worker pool with controlled concurrency and pacing
     const workers: Promise<void>[] = [];
     // Throttled release: don't fire all at once, pace initial bursts 40ms apart
@@ -466,7 +475,11 @@ export function ProjectsManager({
     const finalTotal = picked.reduce((s, f) => s + f.file.size, 0);
     // sentBaseRef is kept for caller compatibility — set to total of succeeded+failed
     sentBaseRef.value = finalTotal;
-    report(finalTotal);
+    report(finalTotal, {
+      done: perFileDone.size,
+      total: picked.length,
+      failed: failed.length,
+    });
 
     return { topFolderId, fileIds, failed, succeeded: fileIds.length };
   };
