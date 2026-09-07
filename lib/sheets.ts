@@ -14,7 +14,7 @@
  */
 
 import { getDriveAccessToken } from "@/lib/drive";
-import { assertDriveEnv } from "@/lib/env";
+import { assertGoogleOAuthEnv } from "@/lib/env";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -62,9 +62,15 @@ async function sheetsFetch(
   return data;
 }
 
-/** Mint a short-lived Sheets-capable access token from the owner credentials. */
+/**
+ * Mint a short-lived Sheets-capable access token from the owner credentials.
+ *
+ * Uses ONLY the shared OAuth env (client ID/secret + refresh token). Never
+ * touches GOOGLE_DRIVE_UPLOAD_FOLDER_ID — that ID belongs solely to the
+ * Drive file-upload feature and must not block Checkpoints.
+ */
 export async function getSheetsAccessToken(): Promise<string> {
-  const { clientId, clientSecret, refreshToken } = assertDriveEnv();
+  const { clientId, clientSecret, refreshToken } = assertGoogleOAuthEnv();
   return getDriveAccessToken(clientId, clientSecret, refreshToken);
 }
 

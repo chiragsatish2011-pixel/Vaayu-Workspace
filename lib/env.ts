@@ -180,7 +180,36 @@ export function requireGoogleDriveUploadFolderId(): string {
   return v as string;
 }
 
-/** Validate all Drive variables at once. Throws the first missing. */
+/**
+ * Shared Google OAuth credentials (Drive + Sheets).
+ *
+ * BOTH features reuse the SAME OAuth client and refresh token (GOOGLE_CLIENT_ID
+ * / GOOGLE_CLIENT_SECRET / GOOGLE_DRIVE_REFRESH_TOKEN and GOOGLE_SCOPES which
+ * includes DRIVE + SHEETS). This helper validates ONLY those shared pieces.
+ *
+ * Intentionally does NOT check GOOGLE_DRIVE_UPLOAD_FOLDER_ID — that variable
+ * belongs SOLELY to the Drive file/folder-upload feature (project files,
+ * codebases, locked-folder uploads). Checkpoints (Google Sheets) must use
+ * THIS helper, never assertDriveEnv, so a missing folder ID can never block
+ * the Checkpoints timeline (the bug this fixes).
+ */
+export function assertGoogleOAuthEnv(): {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+} {
+  const clientId = requireGoogleClientId();
+  const clientSecret = requireGoogleClientSecret();
+  const refreshToken = requireGoogleDriveRefreshToken();
+  return { clientId, clientSecret, refreshToken };
+}
+
+/**
+ * Validate all Drive variables at once — ONLY for the Drive file-upload
+ * feature (project files, /api/drive/*, /api/projects). Throws the first
+ * missing. Do NOT use this for Checkpoints/Sheets; use assertGoogleOAuthEnv
+ * instead so checkpoints stay decoupled from the upload folder.
+ */
 export function assertDriveEnv(): {
   clientId: string;
   clientSecret: string;
