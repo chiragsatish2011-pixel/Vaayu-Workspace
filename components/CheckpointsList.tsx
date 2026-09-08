@@ -7,7 +7,6 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { formatDateTime } from "@/lib/format";
 import { extractPlainTextFromTiptap, renderTiptapJsonToReact, TiptapEditor } from "@/components/mentions/TiptapEditor";
-import { StartContextCall } from "@/components/calls/StartContextCall";
 
 export interface CheckpointItem {
   id: string;
@@ -377,7 +376,7 @@ export function CheckpointsList({
                       renderNote(item)
                     )}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <StartContextCall context="checkpoint" contextId={item.id} label="Start Call" />
+                      <span className="text-xs text-stone" />
                       {canModerate(item) && !isEditing && (
                         <div className="flex gap-2">
                           <button

@@ -2,7 +2,6 @@ import { AppShell } from "@/components/AppShell";
 import { Reveal } from "@/components/Reveal";
 import { SettingsForm } from "@/components/SettingsForm";
 import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
-import { CallNotificationsToggle } from "@/components/calls/CallNotificationsToggle";
 import { requireActiveSession } from "@/lib/session";
 
 // Protected, per-user page — always render per request, never prerender
@@ -71,10 +70,10 @@ export default async function SettingsPage() {
             Notifications
           </h2>
           <p className="mt-1 text-sm text-steel">
-            Manage call alerts. This controls whether the app sends you notifications — the browser permission itself is managed in your browser’s site settings.
+            Call notifications are paused while Calls is disabled (see <a href="/calls" className="font-semibold text-ink underline">/calls</a> for why). Nothing to configure here for now.
           </p>
           <div className="mt-5 border-t border-hairline-soft pt-5">
-            <CallNotificationsToggle userId={user.id} />
+            <p className="text-sm text-stone">Calls notifications are off — Calls is paused workspace-wide.</p>
           </div>
         </Reveal>
       </section>

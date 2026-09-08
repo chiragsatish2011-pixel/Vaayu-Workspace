@@ -442,9 +442,22 @@ export function CallsHub({ displayName, userId, userRole }: { displayName: strin
     );
   }
 
+  const isBillingError = !!error && /missing-payment|payment-method|billing|Daily\.co billing/i.test(error);
   return (
     <div className="space-y-6">
-      {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+      {error &&
+        (isBillingError ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="text-sm font-semibold text-amber-900">Daily.co needs a payment method</p>
+            <p className="mt-1 text-sm leading-relaxed text-amber-900/80">{error}</p>
+            <a href="https://dashboard.daily.co/settings/billing" target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white hover:bg-charcoal">
+              Open Daily Billing →
+            </a>
+            <button onClick={() => setError(null)} className="ml-2 text-xs text-amber-900 underline">Dismiss</button>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        ))}
 
       <CallNotificationPrePrompt userId={userId} />
       <CallNotificationBlockedNotice />

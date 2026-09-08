@@ -6,7 +6,7 @@ import {
   FolderIcon,
 } from "@/components/icons";
 
-export type SectionKey = "checkpoints" | "files" | "projects" | "chat" | "calls";
+export type SectionKey = "checkpoints" | "files" | "projects" | "chat";
 
 export interface Section {
   key: SectionKey;
@@ -113,27 +113,24 @@ export const SECTIONS: Section[] = [
       "One channel per project, plus team-wide announcements",
     ],
   },
-  {
-    key: "calls",
-    href: "/calls",
-    label: "Calls",
-    wordmark: "Calls",
-    tagline: "One click, face to face — now live.",
-    blurb: "Voice and video rooms with low-latency screen sharing, SFU simulcast, and in-app invites.",
-    phase: "Live · Daily.co SFU",
-    badge: { text: "Live", tone: "new" },
-    gradient:
-      "from-[#0e7a64] via-[#22ab94] to-[#3daeff]",
-    accent: "#22ab94",
-    accentText: "text-teal-deep",
-    accentSoftBg: "bg-[#dcf5ee]",
-    icon: (p) => <CallIcon {...p} />,
-    planned: [
-      "Voice and Video — two distinct entry points, not a toggle",
-      "Embedded Daily UI — SFU, simulcast, screen share, active speaker",
-      "Standalone hub + contextual (project/checkpoint) with Join indicator",
-    ],
-  },
+  // Calls is temporarily disabled (Daily.co now requires a payment method for every room).
+  // Kept in git history; re-add by restoring this entry. /calls shows a parked notice.
+  // {
+  //   key: "calls",
+  //   href: "/calls",
+  //   label: "Calls",
+  //   wordmark: "Calls",
+  //   tagline: "Paused — payment wall, coming back via free provider.",
+  //   blurb: "Temporarily disabled. Was: Voice/video via Daily.co SFU.",
+  //   phase: "Paused",
+  //   badge: { text: "Paused", tone: "beta" },
+  //   gradient: "from-[#0e7a64] via-[#22ab94] to-[#3daeff]",
+  //   accent: "#22ab94",
+  //   accentText: "text-teal-deep",
+  //   accentSoftBg: "bg-[#dcf5ee]",
+  //   icon: (p) => <CallIcon {...p} />,
+  //   planned: ["Paused — see /calls notice"],
+  // },
 ];
 
 export const sectionByKey = (key: SectionKey): Section =>

@@ -23,7 +23,6 @@ const marqueeItems = [
   "Files",
   "Projects",
   "Chat",
-  "Calls",
   "Phase 01 live",
   "Secure sessions",
   "Vercel + Neon",

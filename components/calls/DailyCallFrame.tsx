@@ -148,6 +148,11 @@ function DailyCallInner({ url, type, displayName, onLeave, onError }: DailyCallF
   const hasError = !!meetingError || !!joinErrorLocal || meetingState === "error";
   const hasScreenShare = screens.length > 0;
   const errorMsg = joinErrorLocal || meetingError?.errorMsg || "Could not join call.";
+  const isBillingError = /missing-payment|payment-method|billing/i.test(
+    [errorMsg, joinErrorLocal, (meetingError as unknown as { error?: string } | null)?.error, (meetingError as unknown as { errorMsg?: string } | null)?.errorMsg]
+      .filter(Boolean)
+      .join(" ")
+  );
 
   // Auto-switch to speaker view when participant count grows (makes the UI feel adaptive)
   useEffect(() => {
@@ -354,18 +359,39 @@ function DailyCallInner({ url, type, displayName, onLeave, onError }: DailyCallF
         {/* Error — calm, intentional error screen (not yellow alert box), consistent with app conventions */}
         {hasError && (
           <div className="absolute inset-0 grid place-items-center bg-[#0d0f12] p-6">
-            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white p-6 text-center shadow-xl">
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white p-6 text-center shadow-xl">
               <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#f3f4f6] text-ink">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-ink">
                   <path d="M12 8v5m0 5h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
               </div>
-              <p className="mt-3 text-sm font-semibold text-ink">Couldn’t join call</p>
-              <p className="mt-1 text-xs leading-relaxed text-steel line-clamp-3">{errorMsg}</p>
+              {isBillingError ? (
+                <>
+                  <p className="mt-3 text-sm font-semibold text-ink">Daily.co needs a payment method</p>
+                  <p className="mt-1 text-xs leading-relaxed text-steel">
+                    Your Daily.co account (<span className="font-mono">account-missing-payment-method</span>) is blocking room creation/joins. This is Daily’s billing check — not our app. Free-tier still requires a card on file (you’re not charged until you exceed free minutes).
+                  </p>
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left">
+                    <p className="text-xs font-semibold text-amber-900">Fix in 30 seconds</p>
+                    <ol className="mt-1 list-decimal pl-4 text-xs leading-relaxed text-amber-900/80">
+                      <li>Open <a href="https://dashboard.daily.co/settings/billing" target="_blank" rel="noreferrer" className="font-semibold underline">dashboard.daily.co → Settings → Billing</a>.</li>
+                      <li>Add a card and save.</li>
+                      <li>Come back here → click <span className="font-semibold">Back to Calls</span> → start a new call.</li>
+                    </ol>
+                  </div>
+                  <p className="mt-2 text-[11px] text-stone">No card ever touches our servers — it’s stored only in Daily. After adding it, this error disappears immediately.</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm font-semibold text-ink">Couldn’t join call</p>
+                  <p className="mt-1 text-xs leading-relaxed text-steel line-clamp-3">{errorMsg}</p>
+                  <p className="mt-2 text-[11px] text-stone">The call was cleaned up — you can try again.</p>
+                </>
+              )}
               <button onClick={handleLeave} className="mt-4 w-full rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal">
                 Back to Calls
               </button>
-              <p className="mt-2 text-[11px] text-stone">The call was cleaned up — you can try again.</p>
+              {!isBillingError && <p className="mt-2 text-[11px] text-stone">The call was cleaned up — you can try again.</p>}
             </div>
           </div>
         )}

@@ -29,7 +29,6 @@ import { FileBrowser } from "@/components/FileBrowser";
 import { UserAvatar } from "@/components/UserAvatar";
 import { formatDate } from "@/lib/format";
 import { getDisplayName } from "@/lib/userColor";
-import { StartContextCall } from "@/components/calls/StartContextCall";
 
 export interface ProjectItem {
   id: string;
@@ -964,11 +963,6 @@ export function ProjectsManager({
                       Single file · {p.codebaseFileSize} — also browsable above
                     </p>
                   )}
-
-                  {/* Contextual call */}
-                  <div className="flex items-center gap-2">
-                    <StartContextCall context="project" contextId={p.id} label="Start Call" />
-                  </div>
 
                   {/* Author meta — displayName primary, email secondary, deterministic color */}
                   <div className="flex items-center justify-between text-xs text-stone pt-1">
