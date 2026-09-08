@@ -38,10 +38,9 @@ const NAV: Array<{ id: NavId; label: string; desc: string; icon: React.Component
 export function WinSettings({ user }: { user: WinUser }) {
   const [active, setActive] = useState<NavId>("home");
   return (
-    <div className="overflow-hidden rounded-2xl border border-hairline bg-[#fbfbfb] shadow-sm">
-      <div className="flex min-h-[560px] flex-col md:flex-row">
-        {/* Left - Windows sidebar */}
-        <aside className="w-full shrink-0 border-b border-hairline-soft bg-[#f3f3f3] p-3 md:w-[240px] md:border-b-0 md:border-r">
+    <div className="flex min-h-[calc(100dvh-118px)] flex-col bg-[#fbfbfb] md:flex-row">
+      {/* Left - Windows sidebar */}
+      <aside className="w-full shrink-0 border-b border-hairline-soft bg-[#f3f3f3] p-3 md:w-[280px] md:border-b-0 md:border-r">
           {/* User header like image */}
           <div className="flex items-center gap-3 rounded-xl px-2 py-3">
             <UserAvatar displayName={user.displayName} email={user.email} userId={user.id} avatarDriveId={user.avatarDriveId} size={44} />
@@ -79,15 +78,16 @@ export function WinSettings({ user }: { user: WinUser }) {
         </aside>
 
         {/* Right - main */}
-        <div className="flex-1 bg-[#f9f9f9] p-4 sm:p-6">
+        <div className="min-w-0 flex-1 bg-[#f9f9f9] p-4 sm:p-8">
+          <div className="mx-auto w-full max-w-4xl">
           {active === "home" && <HomePanel user={user} onNav={setActive} />}
           {active === "system" && <SystemPanel />}
           {active === "accounts" && <AccountsPanel user={user} />}
           {active === "security" && <SecurityPanel user={user} />}
           {active === "notifications" && <NotificationsPanel />}
           {active === "about" && <AboutPanel user={user} />}
+          </div>
         </div>
-      </div>
     </div>
   );
 }
@@ -99,28 +99,27 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
 
       {/* Device header like DESKTOP-IKK3TOO */}
       <div className="flex flex-wrap items-center gap-4 rounded-xl border border-hairline bg-white p-4 shadow-sm">
-        <div className="h-14 w-20 overflow-hidden rounded-lg border border-hairline bg-[#0a0a0a]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/vaayu-hero-bg.jpg" alt="" className="h-full w-full object-cover opacity-90" />
+        <div className="h-14 w-20 overflow-hidden rounded-lg border border-hairline bg-ink grid place-items-center">
+          <span className="font-display text-lg font-bold tracking-tight text-white">{getDisplayName(user.displayName, user.email).slice(0, 2).toUpperCase()}</span>
         </div>
-        <div className="min-w-0">
-          <p className="font-semibold text-ink">{getDisplayName(user.displayName, user.email)}’s workspace</p>
-          <p className="font-mono text-xs text-steel">{user.email} · {user.role}{user.department ? ` · ${user.department}` : ""}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-ink">{getDisplayName(user.displayName, user.email)}’s workspace</p>
+          <p className="truncate font-mono text-xs text-steel">{user.email} · {user.role}{user.department ? ` · ${user.department}` : ""}</p>
           <button onClick={() => onNav("accounts")} className="text-xs font-semibold text-[#0078d4] hover:underline">
             Rename / Edit profile
           </button>
         </div>
-        <div className="ml-auto hidden items-center gap-6 sm:flex">
+        <div className="hidden shrink-0 items-center gap-4 sm:flex">
           <div className="flex items-center gap-2 text-xs">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">◈</span>
-            <span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">◈</span>
+            <span className="leading-tight">
               <span className="block font-semibold">Drive</span>
               <span className="text-stone">Connected</span>
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">●</span>
-            <span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">●</span>
+            <span className="leading-tight">
               <span className="block font-semibold">Vercel + Neon</span>
               <span className="text-stone">Running</span>
             </span>
@@ -130,10 +129,14 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
 
       {/* Info banner like "You need to activate Windows..." */}
       <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <span className="mt-0.5 grid h-5 w-5 place-items-center rounded-full bg-[#0078d4] text-[11px] font-bold text-white">i</span>
-        <p className="text-sm text-amber-900">
-          Calls is paused workspace-wide — Daily.co needs a card on file. Open <button onClick={() => onNav("notifications")} className="font-semibold underline">Notifications</button> or see{" "}
-          <a href="/calls" className="font-semibold underline">
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0078d4] text-[11px] font-bold text-white">i</span>
+        <p className="flex-1 text-sm leading-relaxed text-amber-900">
+          Calls is paused workspace-wide — Daily.co needs a card on file. Open{" "}
+          <button onClick={() => onNav("notifications")} className="whitespace-nowrap font-semibold underline">
+            Notifications
+          </button>{" "}
+          or see{" "}
+          <a href="/calls" className="whitespace-nowrap font-semibold underline">
             /calls
           </a>{" "}
           for details. Files, projects, and chat are not affected.
