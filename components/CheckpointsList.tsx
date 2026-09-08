@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/Badge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
@@ -44,6 +44,10 @@ export function CheckpointsList({
   notice?: string | null;
 }) {
   const [items, setItems] = useState<CheckpointItem[]>(initialItems);
+  // Sync when server enriches after profile rename (accurate update: Chirag -> chirag S must reflect everywhere without manual sheet edit)
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

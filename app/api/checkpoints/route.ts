@@ -1,4 +1,7 @@
+import { inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { users } from "@/db/schema";
 import {
   CheckpointForbiddenError,
   CheckpointNotFoundError,
@@ -8,6 +11,32 @@ import {
   updateCheckpoint,
 } from "@/lib/checkpoints-store";
 import { requireApiSession } from "@/lib/session";
+
+async function enrichCheckpoints<T extends { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }>(
+  rows: T[]
+): Promise<(T & { avatarDriveId: string | null })[]> {
+  if (rows.length === 0) return rows as (T & { avatarDriveId: string | null })[];
+  const ids = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
+  if (ids.length === 0) return rows as (T & { avatarDriveId: string | null })[];
+  try {
+    const userRows = await db
+      .select({ id: users.id, displayName: users.displayName, avatarDriveId: users.avatarDriveId, email: users.email })
+      .from(users)
+      .where(inArray(users.id, ids));
+    const byId = new Map(userRows.map((u) => [u.id, u]));
+    return rows.map((r) => {
+      const u = byId.get(r.userId);
+      return {
+        ...r,
+        displayName: u?.displayName ?? r.displayName,
+        userEmail: u?.email ?? r.userEmail,
+        avatarDriveId: u?.avatarDriveId ?? null,
+      } as T & { avatarDriveId: string | null };
+    });
+  } catch {
+    return rows as (T & { avatarDriveId: string | null })[];
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +67,8 @@ export async function GET() {
   }
 
   try {
-    const checkpoints = await getCheckpoints();
+    const raw = await getCheckpoints();
+    const checkpoints = await enrichCheckpoints(raw as unknown as { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }[]);
     return NextResponse.json({ checkpoints });
   } catch (err) {
     return NextResponse.json(storeError(err), { status: 500 });
@@ -62,7 +92,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const checkpoint = await createCheckpoint(user, note);
+    const rawCheckpoint = await createCheckpoint(user, note);
+    // Enrich so response carries current avatar/displayName (accurate update after rename)
+    const [checkpoint] = await enrichCheckpoints([rawCheckpoint as unknown as { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }]);
     return NextResponse.json({ checkpoint }, { status: 201 });
   } catch (err) {
     return NextResponse.json(storeError(err), { status: 500 });
@@ -93,7 +125,8 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const checkpoint = await updateCheckpoint(user, id, note);
+    const rawCheckpoint = await updateCheckpoint(user, id, note);
+    const [checkpoint] = await enrichCheckpoints([rawCheckpoint as unknown as { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }]);
     return NextResponse.json({ checkpoint });
   } catch (err) {
     if (err instanceof CheckpointNotFoundError) {
