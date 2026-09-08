@@ -172,3 +172,56 @@ export function UploadIcon(props: IconProps) {
   );
 }
 
+export function MusicIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 15v-2.5a8 8 0 0 1 16 0V15" />
+      <rect x="3" y="14" width="4" height="7" rx="1.5" />
+      <rect x="17" y="14" width="4" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M10 8.8v6.4l5.2-3.2Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function DocIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6 3.5h7l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z" />
+      <path d="M13 3.5V8h4" />
+      <line x1="8.5" y1="12" x2="14.5" y2="12" />
+      <line x1="8.5" y1="15.5" x2="14.5" y2="15.5" />
+    </svg>
+  );
+}
+
+export function ImageIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m5.5 17.5 4.5-4.5 3 3 2.5-2.5 3 3" />
+    </svg>
+  );
+}
+
+export function ListIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <line x1="8.5" y1="6.5" x2="20" y2="6.5" />
+      <line x1="8.5" y1="12" x2="20" y2="12" />
+      <line x1="8.5" y1="17.5" x2="20" y2="17.5" />
+      <circle cx="5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="17.5" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+

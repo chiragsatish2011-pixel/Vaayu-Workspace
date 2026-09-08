@@ -118,10 +118,10 @@ export const SECTIONS: Section[] = [
     href: "/calls",
     label: "Calls",
     wordmark: "Calls",
-    tagline: "One click, face to face.",
-    blurb: "Voice and video rooms launched straight from a channel.",
-    phase: "Phase 4 · Voice & video",
-    badge: { text: "Phase 4", tone: "beta" },
+    tagline: "One click, face to face — now live.",
+    blurb: "Voice and video rooms with low-latency screen sharing, SFU simulcast, and in-app invites.",
+    phase: "Live · Daily.co SFU",
+    badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#0e7a64] via-[#22ab94] to-[#3daeff]",
     accent: "#22ab94",
@@ -129,9 +129,9 @@ export const SECTIONS: Section[] = [
     accentSoftBg: "bg-[#dcf5ee]",
     icon: (p) => <CallIcon {...p} />,
     planned: [
-      "Start-call button that spins up a room via LiveKit or Daily",
-      "Embedded call UI — no links, no context switching",
-      "Voice-first default with video one tap away",
+      "Voice and Video — two distinct entry points, not a toggle",
+      "Embedded Daily UI — SFU, simulcast, screen share, active speaker",
+      "Standalone hub + contextual (project/checkpoint) with Join indicator",
     ],
   },
 ];

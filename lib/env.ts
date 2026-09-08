@@ -235,3 +235,17 @@ export function requireCheckpointsSpreadsheetId(): string {
   // ("Requested entity was not found") with no hint it was whitespace.
   return (v as string).trim();
 }
+
+/**
+ * Daily.co API key (SERVER ONLY — never NEXT_PUBLIC_).
+ * One clear source of truth per credential; never expose to client.
+ * Room creation is via /api/calls/rooms (server) which reads this.
+ */
+export function requireDailyApiKey(): string {
+  const v = process.env.DAILY_API_KEY;
+  if (isMissing(v)) {
+    if (isBuildPhase()) return "build-phase-placeholder-daily-api-key";
+    throw new Error(`DAILY_API_KEY is not set. ${VERCEL_HINT} Get it from https://dashboard.daily.co/developers (API keys).`);
+  }
+  return (v as string).trim();
+}

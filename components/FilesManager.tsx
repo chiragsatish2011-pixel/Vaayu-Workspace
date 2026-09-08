@@ -79,6 +79,7 @@ export function FilesManager() {
         emptyText="No files in the team folder yet — upload above to get started."
         refreshKey={refreshKey}
         manage
+        defaultView="grid"
       />
     </div>
   );

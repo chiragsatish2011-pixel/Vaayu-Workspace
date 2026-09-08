@@ -78,6 +78,7 @@ export async function POST(req: Request) {
     console.log(
       `[drive/upload-session] session for (${session.fileName}) into folder (${session.parentFolderId}) by (${user.email})`
     );
+    invalidateDriveBrowseCache();
     return NextResponse.json(
       {
         sessionUri: session.sessionUri,

@@ -158,6 +158,19 @@ const EMBEDDED_BOOTSTRAP = [
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );`,
+  `DO $$ BEGIN CREATE TYPE "call_type" AS ENUM('voice', 'video'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN CREATE TYPE "call_context" AS ENUM('standalone', 'project', 'checkpoint'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `CREATE TABLE IF NOT EXISTS "calls" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"type" "call_type" NOT NULL,
+	"context" "call_context" DEFAULT 'standalone' NOT NULL,
+	"context_id" text,
+	"daily_room_name" text NOT NULL UNIQUE,
+	"daily_room_url" text NOT NULL,
+	"created_by" uuid REFERENCES "public"."users"("id") ON DELETE set null,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL
+);`,
 ];
 
 async function loadBootstrapStatements(): Promise<string[]> {
@@ -205,6 +218,19 @@ export async function runBootstrap(
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "has_completed_onboarding" boolean DEFAULT false NOT NULL`,
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "department" text`,
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "job_title" text`,
+      `DO $$ BEGIN CREATE TYPE "call_type" AS ENUM('voice', 'video'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN CREATE TYPE "call_context" AS ENUM('standalone', 'project', 'checkpoint'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `CREATE TABLE IF NOT EXISTS "calls" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"type" "call_type" NOT NULL,
+	"context" "call_context" DEFAULT 'standalone' NOT NULL,
+	"context_id" text,
+	"daily_room_name" text NOT NULL UNIQUE,
+	"daily_room_url" text NOT NULL,
+	"created_by" uuid REFERENCES "public"."users"("id") ON DELETE set null,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL
+)`,
     ];
     for (const stmt of alters) {
       try {

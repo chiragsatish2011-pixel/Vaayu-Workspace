@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatBytes } from "@/components/UploadProgressBar";
-import { FolderIcon, BoxIcon } from "@/components/icons";
+import { FolderIcon, BoxIcon, GridIcon, ListIcon, MusicIcon, PlayIcon, DocIcon, ImageIcon } from "@/components/icons";
 
 /* ── Types ────────────────────────────────────────────────────────── */
 export interface BrowseFile {
@@ -138,13 +138,20 @@ function sumDescendantBytes(node: TreeNode): number {
 /* ── Flatten visible nodes for virtualization ───────────────────── */
 type FlatNode = { node: TreeNode; depth: number; isExpanded: boolean };
 
-function flattenVisible(root: TreeNode, expanded: Set<string>): FlatNode[] {
+function flattenVisible(
+  root: TreeNode,
+  expanded: Set<string>,
+  sortDir: "asc" | "desc" = "asc"
+): FlatNode[] {
   const out: FlatNode[] = [];
+  const dir = sortDir === "asc" ? 1 : -1;
   function walk(n: TreeNode, depth: number) {
-    // Don't include root itself in list — its children are top level
+    // Don't include root itself in list — its children are top level.
+    // Folders always stay grouped first (Drive convention); sort applies
+    // by name within each group.
     for (const child of Array.from(n.children.values()).sort((a, b) => {
       if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      return dir * a.name.localeCompare(b.name);
     })) {
       const isExp = expanded.has(child.relativePath);
       out.push({ node: child, depth, isExpanded: isExp });
@@ -158,6 +165,83 @@ function flattenVisible(root: TreeNode, expanded: Set<string>): FlatNode[] {
 /* ── Preview cache (session) ────────────────────────────────────── */
 const snippetCache = new Map<string, { snippet: string; truncated: boolean }>();
 const thumbnailCache = new Map<string, string>(); // id -> thumbnailLink (already in metadata, but cache for future)
+
+/** Max cards rendered per grid section before "Show more" (huge folders). */
+const GRID_PAGE_SIZE = 500;
+
+/** Media bucket driving grid tile fallbacks (thumbnailLink wins first). */
+export type MediaKind = "image" | "video" | "audio" | "code" | "doc" | "other";
+
+export function mediaKind(mimeType: string, name: string): MediaKind {
+  if (isImage(mimeType, name)) return "image";
+  const m = mimeType.toLowerCase();
+  const ext = name.toLowerCase().split(".").pop() || "";
+  if (
+    m.startsWith("video/") ||
+    ["mp4", "mov", "avi", "mkv", "webm"].includes(ext)
+  )
+    return "video";
+  if (
+    m.startsWith("audio/") ||
+    ["mp3", "wav", "ogg", "flac", "m4a", "aac"].includes(ext)
+  )
+    return "audio";
+  if (isCodeText(mimeType, name)) return "code";
+  return "doc";
+}
+
+/**
+ * Lazy code/text snippet for grid doc previews. Shares FileRow's session
+ * cache + abort semantics so list and grid never double-fetch a file.
+ */
+export function useFileSnippet(
+  mimeType: string,
+  name: string,
+  id: string,
+  enabled: boolean
+): { snippet: string | null; loading: boolean; error: string | null } {
+  const [snippet, setSnippet] = useState<string | null>(
+    () => snippetCache.get(id)?.snippet ?? null
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (!enabled || !isCodeText(mimeType, name)) return;
+    if (snippetCache.has(id)) return;
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    let cancelled = false;
+    setLoading(true);
+    const ctrl = new AbortController();
+    fetch(`/api/drive/snippet?id=${encodeURIComponent(id)}`, {
+      signal: ctrl.signal,
+    })
+      .then(async (r) => {
+        const j = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(j?.error || "No preview");
+        return j as { snippet: string };
+      })
+      .then((j) => {
+        if (cancelled) return;
+        snippetCache.set(id, { snippet: j.snippet, truncated: false });
+        setSnippet(j.snippet);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setError(e instanceof Error ? e.message : "No preview");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [enabled, mimeType, name, id]);
+  return { snippet, loading, error };
+}
 
 /* ── Component ─────────────────────────────────────────────────────
  * General-purpose Drive folder browser. Originally built for per-project
@@ -179,6 +263,7 @@ export function FileBrowser({
   contextNoun = "project",
   refreshKey = 0,
   manage = false,
+  defaultView = "list",
   onClose,
 }: {
   projectId?: string;
@@ -195,6 +280,8 @@ export function FileBrowser({
    * only — Projects never sets this, so manager UI can't leak there.
    */
   manage?: boolean;
+  /** Initial view. Files page uses grid; Projects modal keeps list. */
+  defaultView?: "grid" | "list";
   onClose?: () => void;
 }) {
   void projectId;
@@ -219,6 +306,13 @@ export function FileBrowser({
   const renameInflight = useRef<string | null>(null);
   const [moveNode, setMoveNode] = useState<TreeNode | null>(null);
   const [moveDestId, setMoveDestId] = useState<string | null>(null);
+  // Grid view (reference layout): card grid with folder navigation.
+  const [view, setView] = useState<"grid" | "list">(defaultView);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Path of folder names from the root to the grid's current folder.
+  const [gridPath, setGridPath] = useState<string[]>([]);
+  const [gridLimit, setGridLimit] = useState(GRID_PAGE_SIZE);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   // Fetch browse data (extracted so delete/upload flows can refetch on demand)
   const load = useCallback(async () => {
@@ -277,15 +371,49 @@ export function FileBrowser({
 
   const flat = useMemo(() => {
     if (!tree) return [];
-    return flattenVisible(tree, expanded);
-  }, [tree, expanded]);
+    return flattenVisible(tree, expanded, sortDir);
+  }, [tree, expanded, sortDir]);
+
+  // Reset grid navigation when the underlying folder changes.
+  useEffect(() => {
+    setGridPath([]);
+    setGridLimit(GRID_PAGE_SIZE);
+    setOpenMenu(null);
+  }, [projectDriveId, data?.root.id]);
+
+  /**
+   * Grid's current folder: walk down from the root by name, clamping to
+   * the deepest path that still exists (rename/move-away mid-session).
+   */
+  const gridNav = useMemo(() => {
+    if (!tree || !data) return null;
+    let node: TreeNode = tree;
+    const valid: string[] = [];
+    for (const seg of gridPath) {
+      const next = Array.from(node.children.values()).find(
+        (c) => c.isFolder && c.name === seg
+      );
+      if (!next) break;
+      node = next;
+      valid.push(seg);
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    const byName = (a: TreeNode, b: TreeNode) => dir * a.name.localeCompare(b.name);
+    const folders = Array.from(node.children.values())
+      .filter((c) => c.isFolder)
+      .sort(byName);
+    const files = Array.from(node.children.values())
+      .filter((c) => !c.isFolder)
+      .sort(byName);
+    return { node, valid, folders, files };
+  }, [tree, data, gridPath, sortDir]);
 
   // Virtualization
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 72, // row height
+    estimateSize: () => 120, // accommodate max row height (base ~52px + snippet max-h-20 80px)
     overscan: 10,
   });
 
@@ -805,12 +933,255 @@ export function FileBrowser({
           )}
         </div>
       </div>
+      {/* Sort + view toolbar (shared by grid and list) */}
+      <div className="flex items-center justify-between gap-2 border-b border-hairline-soft px-4 py-2">
+        <button
+          type="button"
+          onClick={() => {
+            setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+            setGridLimit(GRID_PAGE_SIZE);
+          }}
+          aria-label={`Sort by name, currently ${sortDir === "asc" ? "ascending" : "descending"}`}
+          title="Sort by name"
+          className="group flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+        >
+          Name
+          <span
+            aria-hidden
+            className="grid h-5 w-5 place-items-center rounded-full bg-azure text-[11px] font-bold leading-none text-white transition-transform duration-200"
+          >
+            <span className={`inline-block transition-transform duration-200 ${sortDir === "asc" ? "" : "rotate-180"}`}>
+              ↓
+            </span>
+          </span>
+        </button>
+        <div
+          role="group"
+          aria-label="View"
+          className="flex items-center gap-1 rounded-full border border-hairline-soft bg-fog/60 p-0.5"
+        >
+          <button
+            type="button"
+            onClick={() => setView("grid")}
+            aria-pressed={view === "grid"}
+            title="Grid view"
+            aria-label="Grid view"
+            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
+              view === "grid" ? "bg-canvas text-ink shadow-sm" : "text-steel hover:text-ink"
+            }`}
+          >
+            <GridIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            aria-pressed={view === "list"}
+            title="List view"
+            aria-label="List view"
+            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
+              view === "list" ? "bg-canvas text-ink shadow-sm" : "text-steel hover:text-ink"
+            }`}
+          >
+            <ListIcon className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
       {zipProgress && (
         <div className="border-b border-hairline-soft bg-amber-50 px-4 py-2 font-mono text-xs text-amber-800">{zipProgress}</div>
       )}
 
-      {/* Virtualized tree */}
-      <div ref={parentRef} className="h-[480px] overflow-auto bg-canvas">
+      {view === "grid" && gridNav ? (
+        <div className="bg-canvas px-4 py-3">
+          {/* Breadcrumb */}
+          <nav
+            aria-label="Current folder"
+            className="mb-3 flex min-w-0 flex-wrap items-center gap-1 text-[13px]"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setGridPath([]);
+                setGridLimit(GRID_PAGE_SIZE);
+                setOpenMenu(null);
+              }}
+              title={data.root.name}
+              aria-current={gridNav.valid.length === 0 ? "page" : undefined}
+              className={`min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 font-semibold transition-colors hover:bg-fog ${
+                gridNav.valid.length === 0 ? "text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              {data.root.name}
+            </button>
+            {gridNav.valid.map((seg, i) => {
+              const last = i === gridNav.valid.length - 1;
+              return (
+                <span key={`${i}-${seg}`} className="flex min-w-0 items-center gap-1">
+                  <span aria-hidden className="text-stone">
+                    /
+                  </span>
+                  {last ? (
+                    <span
+                      aria-current="page"
+                      title={seg}
+                      className="min-w-0 max-w-[160px] truncate px-1 py-0.5 font-semibold text-ink"
+                    >
+                      {seg}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGridPath(gridNav.valid.slice(0, i + 1));
+                        setGridLimit(GRID_PAGE_SIZE);
+                        setOpenMenu(null);
+                      }}
+                      title={seg}
+                      className="min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 text-steel transition-colors hover:bg-fog hover:text-ink"
+                    >
+                      {seg}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+
+          {/* Folders — compact horizontal cards */}
+          {gridNav.folders.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {gridNav.folders.slice(0, gridLimit).map((node) => (
+                <FolderCard
+                  key={node.relativePath || node.id}
+                  node={node}
+                  menuOpen={openMenu === (node.relativePath || node.id)}
+                  onToggleMenu={() =>
+                    setOpenMenu((m) =>
+                      m === (node.relativePath || node.id) ? null : node.relativePath || node.id
+                    )
+                  }
+                  onCloseMenu={() => setOpenMenu(null)}
+                  onOpen={() => {
+                    setGridPath([...gridNav.valid, node.name]);
+                    setGridLimit(GRID_PAGE_SIZE);
+                    setOpenMenu(null);
+                  }}
+                  c={{
+                    onDownload: () => downloadFolder(node),
+                    downloading: downloading === node.id,
+                    onDelete: () => deleteNode(node),
+                    deleteBusy: deleting !== null,
+                    manage,
+                    mutating,
+                    renaming:
+                      renamingId !== null && realDriveIdOf(node) === renamingId,
+                    renameDraft,
+                    onStartRename: () => {
+                      const id = realDriveIdOf(node);
+                      if (!id) return;
+                      setRenamingId(id);
+                      setRenameDraft(node.name);
+                    },
+                    onRenameDraft: setRenameDraft,
+                    onCommitRename: () => {
+                      if (renamingId) submitRename(renamingId);
+                    },
+                    onCancelRename: () => {
+                      setRenamingId(null);
+                      setRenameDraft("");
+                    },
+                    onMove: () => {
+                      setMoveNode(node);
+                      setMoveDestId(null);
+                    },
+                    onDownloadFolder: () => downloadFolder(node),
+                    onNewSubfolder: () => {
+                      const id = realDriveIdOf(node);
+                      if (!id) return;
+                      setNewFolderParent({ id, name: node.name });
+                      setNewFolderName("");
+                    },
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Files — thumbnail-forward cards */}
+          {gridNav.files.length > 0 && (
+            <div
+              className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 ${
+                gridNav.folders.length > 0 ? "mt-3" : ""
+              }`}
+            >
+              {gridNav.files.slice(0, gridLimit).map((node) => (
+                <FileCard
+                  key={node.relativePath || node.id}
+                  node={node}
+                  menuOpen={openMenu === (node.relativePath || node.id)}
+                  onToggleMenu={() =>
+                    setOpenMenu((m) =>
+                      m === (node.relativePath || node.id) ? null : node.relativePath || node.id
+                    )
+                  }
+                  onCloseMenu={() => setOpenMenu(null)}
+                  c={{
+                    onDownload: () => downloadFile(node),
+                    downloading: downloading === node.id,
+                    onDelete: () => deleteNode(node),
+                    deleteBusy: deleting !== null,
+                    manage,
+                    mutating,
+                    renaming:
+                      renamingId !== null && realDriveIdOf(node) === renamingId,
+                    renameDraft,
+                    onStartRename: () => {
+                      const id = realDriveIdOf(node);
+                      if (!id) return;
+                      setRenamingId(id);
+                      setRenameDraft(node.name);
+                    },
+                    onRenameDraft: setRenameDraft,
+                    onCommitRename: () => {
+                      if (renamingId) submitRename(renamingId);
+                    },
+                    onCancelRename: () => {
+                      setRenamingId(null);
+                      setRenameDraft("");
+                    },
+                    onMove: () => {
+                      setMoveNode(node);
+                      setMoveDestId(null);
+                    },
+                    onDownloadFolder: () => downloadFile(node),
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {gridNav.folders.length === 0 && gridNav.files.length === 0 && (
+            <p className="p-8 text-center text-sm text-steel">
+              {emptyText ?? "This folder is empty."}
+            </p>
+          )}
+          {(gridNav.folders.length > gridLimit ||
+            gridNav.files.length > gridLimit) && (
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() => setGridLimit((l) => l + GRID_PAGE_SIZE)}
+                className="rounded-full border border-hairline px-4 py-1.5 text-xs font-semibold text-ink hover:border-ink"
+              >
+                Show more (
+                {Math.max(0, gridNav.folders.length - gridLimit) +
+                  Math.max(0, gridNav.files.length - gridLimit)}{" "}
+                remaining)
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div ref={parentRef} className="h-[480px] overflow-auto bg-canvas">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -882,6 +1253,7 @@ export function FileBrowser({
         </div>
         {flat.length === 0 && <p className="p-8 text-center text-sm text-steel">{emptyText ?? `No files in this ${contextNoun} yet.`}</p>}
       </div>
+      )}
 
       <div className="border-t border-hairline-soft bg-fog/30 px-4 py-2 font-mono text-[11px] text-steel">
         {flat.length} visible · {selected.size > 0 ? `${selected.size} selected` : "scroll to load previews lazily"} · cached session
@@ -1078,50 +1450,11 @@ function FileRow({
   onNewSubfolder: (node: TreeNode) => void;
 }) {
   const { node } = flatNode;
-  const isFolder = node.isFolder;
-  const [snippet, setSnippet] = useState<string | null>(null);
-  const [snippetLoading, setSnippetLoading] = useState(false);
-  const [snippetError, setSnippetError] = useState<string | null>(null);
-  const hasFetchedRef = useRef(false);
-
-  // Lazy-load code snippet only when row becomes visible and is code file
-  useEffect(() => {
-    if (isFolder) return;
-    if (!isCodeText(node.mimeType, node.name)) return;
-    if (hasFetchedRef.current) return;
-    if (snippetCache.has(node.id)) {
-      setSnippet(snippetCache.get(node.id)!.snippet);
-      return;
-    }
-    hasFetchedRef.current = true;
-    let cancelled = false;
-    setSnippetLoading(true);
-    // Use AbortController to cancel if scrolled past quickly
-    const ctrl = new AbortController();
-    fetch(`/api/drive/snippet?id=${encodeURIComponent(node.id)}`, { signal: ctrl.signal })
-      .then(async (r) => {
-        const j = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(j?.error || "No preview");
-        return j as { snippet: string };
-      })
-      .then((j) => {
-        if (cancelled) return;
-        snippetCache.set(node.id, { snippet: j.snippet, truncated: false });
-        setSnippet(j.snippet);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        setSnippetError(e instanceof Error ? e.message : "No preview");
-      })
-      .finally(() => {
-        if (!cancelled) setSnippetLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      ctrl.abort();
-    };
-  }, [isFolder, node.id, node.mimeType, node.name]);
+  const isFolder = node.isFolder || node.mimeType === "application/vnd.google-apps.folder";
+  const [thumbnailError, setThumbnailError] = useState(false);
+  // Lazy code snippet (shared session cache with grid doc previews).
+  const { snippet, loading: snippetLoading, error: snippetError } =
+    useFileSnippet(node.mimeType, node.name, node.id, !isFolder);
 
   return (
     <div className="flex w-full items-center gap-2 pl-2 pr-2" style={{ paddingLeft: `${8 + depth * 16}px` }}>
@@ -1151,15 +1484,13 @@ function FileRow({
         {isFolder ? (
           <FolderIcon className="h-5 w-5 text-steel" />
         ) : isImage(node.mimeType, node.name) ? (
-          node.thumbnailLink ? (
+          node.thumbnailLink && !thumbnailError ? (
             <img
               src={node.thumbnailLink}
               alt={node.name}
               loading="lazy"
               className="h-full w-full object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
+              onError={() => setThumbnailError(true)}
             />
           ) : (
             <span className="text-lg">🖼️</span>
@@ -1189,7 +1520,7 @@ function FileRow({
             className="w-full rounded-lg border border-ink bg-canvas px-2 py-1 text-sm font-medium text-ink focus:outline-none"
           />
         ) : (
-          <p className="truncate text-sm font-medium text-ink">{node.name}</p>
+          <p title={node.name} className="truncate text-sm font-medium text-ink">{node.name}</p>
         )}
         <p className="truncate font-mono text-[11px] text-stone">
           {isFolder ? `${(node as any).totalDescendantFiles ?? "?"} files` : formatBytes(Number(node.size || 0) || 0)} · {node.mimeType.split("/").pop()}
@@ -1270,6 +1601,377 @@ function FileRow({
           )}
         </>
       )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Grid view cards (reference layout) ─────────────────────────────
+ * Folders-first 4-column card grid: compact horizontal folder cards,
+ * thumbnail-forward file cards, ⋮ menus carrying the same actions as the
+ * list rows. Thumbnails prefer Drive's thumbnailLink (real image / video
+ * frame / rendered doc); per-type tiles cover what Drive can't thumb
+ * (audio et al.).
+ */
+
+interface MenuItem {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}
+
+function CardMenu({
+  open,
+  onClose,
+  onToggle,
+  label,
+  items,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onToggle: () => void;
+  label: string;
+  items: MenuItem[];
+}) {
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (open) onClose();
+          else onToggle();
+        }}
+        aria-label={label}
+        aria-expanded={open}
+        title={label}
+        className="grid h-7 w-7 place-items-center rounded-full text-base font-bold leading-none text-steel transition-colors hover:bg-fog hover:text-ink"
+      >
+        <span aria-hidden>⋮</span>
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-hidden
+            tabIndex={-1}
+            onClick={onClose}
+            className="fixed inset-0 z-20 cursor-default bg-transparent"
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-hairline bg-canvas py-1 shadow-xl"
+          >
+            {items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                  item.onClick();
+                }}
+                disabled={item.disabled}
+                className={`block w-full px-3 py-1.5 text-left text-[13px] transition-colors disabled:opacity-50 ${
+                  item.danger
+                    ? "text-error hover:bg-error-bg"
+                    : "text-ink hover:bg-fog"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface CardCallbacks {
+  onDownload: () => void;
+  downloading: boolean;
+  onDelete: () => void;
+  deleteBusy: boolean;
+  manage: boolean;
+  mutating: boolean;
+  renaming: boolean;
+  renameDraft: string;
+  onStartRename: () => void;
+  onRenameDraft: (value: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onMove: () => void;
+}
+
+function cardMenuItems(
+  isFolder: boolean,
+  c: CardCallbacks & { onDownloadFolder: () => void; onNewSubfolder?: () => void }
+): MenuItem[] {
+  const items: MenuItem[] = [
+    {
+      label: isFolder ? "Download as zip" : "Download",
+      onClick: isFolder ? c.onDownloadFolder : c.onDownload,
+      disabled: c.downloading || c.mutating,
+    },
+  ];
+  if (c.manage) {
+    items.push(
+      { label: "Rename", onClick: c.onStartRename, disabled: c.mutating || c.renaming },
+      { label: "Move", onClick: c.onMove, disabled: c.mutating }
+    );
+    if (isFolder && c.onNewSubfolder) {
+      items.push({ label: "New subfolder", onClick: c.onNewSubfolder, disabled: c.mutating });
+    }
+  }
+  items.push({
+    label: "Delete",
+    onClick: c.onDelete,
+    danger: true,
+    disabled: c.deleteBusy || c.mutating,
+  });
+  return items;
+}
+
+function RenameInput({
+  name,
+  draft,
+  onDraft,
+  onCommit,
+  onCancel,
+  disabled,
+}: {
+  name: string;
+  draft: string;
+  onDraft: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => onDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onCommit();
+        if (e.key === "Escape") onCancel();
+      }}
+      onBlur={onCommit}
+      disabled={disabled}
+      maxLength={120}
+      aria-label={`Rename ${name}`}
+      onClick={(e) => e.stopPropagation()}
+      className="w-full rounded-lg border border-ink bg-canvas px-2 py-1 text-sm font-medium text-ink focus:outline-none"
+    />
+  );
+}
+
+function FolderCard({
+  node,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
+  onOpen,
+  c,
+}: {
+  node: TreeNode;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
+  onOpen: () => void;
+  c: CardCallbacks & { onDownloadFolder: () => void; onNewSubfolder: () => void };
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-hairline-soft bg-fog/70 px-3 py-2.5 transition-colors hover:border-hairline">
+      <button
+        type="button"
+        onClick={onOpen}
+        title={`Open ${node.name}`}
+        aria-label={`Open folder ${node.name}`}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink"
+      >
+        <FolderIcon className="h-6 w-6" />
+      </button>
+      <div className="min-w-0 flex-1">
+        {c.renaming ? (
+          <RenameInput
+            name={node.name}
+            draft={c.renameDraft}
+            onDraft={c.onRenameDraft}
+            onCommit={c.onCommitRename}
+            onCancel={c.onCancelRename}
+            disabled={c.mutating}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpen}
+            title={node.name}
+            className="block w-full truncate text-left text-sm font-medium text-ink"
+          >
+            {node.name}
+          </button>
+        )}
+      </div>
+      <CardMenu
+        open={menuOpen}
+        onClose={onCloseMenu}
+        onToggle={onToggleMenu}
+        label={`Options for ${node.name}`}
+        items={cardMenuItems(true, c)}
+      />
+    </div>
+  );
+}
+
+/** Small type glyph shown in file-card headers, colored by media family. */
+function FileTypeGlyph({ kind }: { kind: MediaKind }) {
+  if (kind === "audio")
+    return (
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-[#ef4444] text-white">
+        <MusicIcon className="h-3.5 w-3.5" />
+      </span>
+    );
+  if (kind === "video")
+    return (
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-[#ef4444] text-white">
+        <PlayIcon className="h-3.5 w-3.5" />
+      </span>
+    );
+  if (kind === "image")
+    return (
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-[#ef4444] text-white">
+        <ImageIcon className="h-3.5 w-3.5" />
+      </span>
+    );
+  return (
+    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-azure-soft text-azure-deep">
+      <DocIcon className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+/** Large preview: Drive thumbnail first, per-type tile fallback. */
+function FileThumb({ node }: { node: TreeNode }) {
+  const [failed, setFailed] = useState(false);
+  const kind = mediaKind(node.mimeType, node.name);
+  const raw = node.thumbnailLink ?? node.file?.thumbnailLink;
+  const thumb =
+    raw && /^(https?:)?\/\//.test(raw)
+      ? raw.replace(/=s\d+$/, "=s400")
+      : null;
+  const { snippet, loading } = useFileSnippet(
+    node.mimeType,
+    node.name,
+    node.id,
+    kind === "code"
+  );
+
+  if (thumb && !failed) {
+    return (
+      <img
+        src={thumb}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+  if (kind === "audio") {
+    return (
+      <div className="grid h-full w-full place-items-center bg-[#ef4444]">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/15 text-white">
+          <MusicIcon className="h-8 w-8" />
+        </span>
+      </div>
+    );
+  }
+  if (kind === "video") {
+    return (
+      <div className="grid h-full w-full place-items-center bg-ink">
+        <PlayIcon className="h-12 w-12 text-white" />
+      </div>
+    );
+  }
+  if (kind === "code") {
+    return (
+      <div className="h-full w-full overflow-hidden bg-canvas p-3 text-left">
+        {loading ? (
+          <span className="animate-pulse font-mono text-[11px] text-stone">
+            Loading preview…
+          </span>
+        ) : snippet ? (
+          <pre className="max-h-full overflow-hidden whitespace-pre-wrap break-all font-mono text-[11px] leading-snug text-ink/80">
+            {snippet.slice(0, 800)}
+          </pre>
+        ) : (
+          <span className="font-mono text-[11px] font-bold text-steel">{"</>"}</span>
+        )}
+      </div>
+    );
+  }
+  if (kind === "image") {
+    return (
+      <div className="grid h-full w-full place-items-center bg-fog">
+        <ImageIcon className="h-10 w-10 text-stone" />
+      </div>
+    );
+  }
+  return (
+    <div className="grid h-full w-full place-items-center bg-azure-soft">
+      <DocIcon className="h-10 w-10 text-azure-deep" />
+    </div>
+  );
+}
+
+function FileCard({
+  node,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
+  c,
+}: {
+  node: TreeNode;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
+  c: CardCallbacks & { onDownloadFolder: () => void };
+}) {
+  const kind = mediaKind(node.mimeType, node.name);
+  return (
+    <div className="overflow-hidden rounded-xl border border-hairline bg-canvas transition-colors hover:border-steel/40">
+      <div className="flex items-center gap-1.5 px-2.5 py-2">
+        <FileTypeGlyph kind={kind} />
+        <div className="min-w-0 flex-1">
+          {c.renaming ? (
+            <RenameInput
+              name={node.name}
+              draft={c.renameDraft}
+              onDraft={c.onRenameDraft}
+              onCommit={c.onCommitRename}
+              onCancel={c.onCancelRename}
+              disabled={c.mutating}
+            />
+          ) : (
+            <p title={node.name} className="truncate text-[13px] font-medium text-ink">
+              {node.name}
+            </p>
+          )}
+        </div>
+        <CardMenu
+          open={menuOpen}
+          onClose={onCloseMenu}
+          onToggle={onToggleMenu}
+          label={`Options for ${node.name}`}
+          items={cardMenuItems(false, c)}
+        />
+      </div>
+      <div className="aspect-[4/3] w-full overflow-hidden border-t border-hairline-soft bg-fog">
+        <FileThumb node={node} />
       </div>
     </div>
   );

@@ -13,6 +13,7 @@
     "db:seed": "node scripts/seed-admin.mjs"
   },
   "dependencies": {
+    "@daily-co/daily-js": "^0.92.2",
     "@neondatabase/serverless": "^1.1.0",
     "@tanstack/react-virtual": "^3.14.10",
     "@types/archiver": "^8.0.0",

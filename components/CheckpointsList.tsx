@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/Badge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
+import { StartContextCall } from "@/components/calls/StartContextCall";
 
 export interface CheckpointItem {
   id: string;
@@ -328,26 +329,29 @@ export function CheckpointsList({
                         {item.note}
                       </p>
                     )}
-                    {canModerate(item) && !isEditing && (
-                      <div className="mt-3 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditing(item)}
-                          disabled={isDeleting}
-                          className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item)}
-                          disabled={isDeleting}
-                          className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-error hover:text-error disabled:opacity-50"
-                        >
-                          {isDeleting ? "Deleting..." : "Delete"}
-                        </button>
-                      </div>
-                    )}
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <StartContextCall context="checkpoint" contextId={item.id} label="Start Call" />
+                      {canModerate(item) && !isEditing && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditing(item)}
+                            disabled={isDeleting}
+                            className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item)}
+                            disabled={isDeleting}
+                            className="press rounded-full border border-hairline px-3.5 py-1.5 text-xs font-medium text-steel transition-colors hover:border-error hover:text-error disabled:opacity-50"
+                          >
+                            {isDeleting ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

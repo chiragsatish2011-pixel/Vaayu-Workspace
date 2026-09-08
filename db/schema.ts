@@ -67,3 +67,21 @@ export const projects = pgTable("projects", {
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 
+export const callTypeEnum = pgEnum("call_type", ["voice", "video"]);
+export const callContextEnum = pgEnum("call_context", ["standalone", "project", "checkpoint"]);
+
+export const calls = pgTable("calls", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: callTypeEnum("type").notNull(),
+  context: callContextEnum("context").notNull().default("standalone"),
+  contextId: text("context_id"),
+  dailyRoomName: text("daily_room_name").notNull().unique(),
+  dailyRoomUrl: text("daily_room_url").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export type Call = typeof calls.$inferSelect;
+export type NewCall = typeof calls.$inferInsert;
+
