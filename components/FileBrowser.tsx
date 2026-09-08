@@ -8,7 +8,6 @@ import {
   collectFilesFromDrop,
   collectFilesFromInput,
   pickedBatchBytes,
-  pickedBatchRoots,
   type PickedUploadFile,
 } from "@/components/folderWalk";
 import { useFolderUpload } from "@/components/useFolderUpload";
@@ -1440,7 +1439,27 @@ export function FileBrowser({
           )}
         </div>
       ) : (
-        <div ref={parentRef} className="h-[480px] overflow-auto bg-canvas">
+        <div
+          ref={parentRef}
+          className="relative h-[480px] overflow-auto bg-canvas"
+          onDragOver={
+            manage
+              ? (e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }
+              : undefined
+          }
+          onDragLeave={manage ? () => setDragActive(false) : undefined}
+          onDrop={manage ? handleDriveDrop : undefined}
+        >
+          {manage && dragActive && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center border-2 border-dashed border-ink bg-ink/5">
+              <p className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white shadow">
+                Drop files or folder here to upload
+              </p>
+            </div>
+          )}
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
