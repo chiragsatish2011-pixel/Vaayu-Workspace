@@ -1161,7 +1161,9 @@ export function FileBrowser({
 
           {gridNav.folders.length === 0 && gridNav.files.length === 0 && (
             <p className="p-8 text-center text-sm text-steel">
-              {emptyText ?? "This folder is empty."}
+              {gridNav.valid.length === 0
+                ? (emptyText ?? "This folder is empty.")
+                : "This folder is empty."}
             </p>
           )}
           {(gridNav.folders.length > gridLimit ||
@@ -1943,7 +1945,7 @@ function FileCard({
 }) {
   const kind = mediaKind(node.mimeType, node.name);
   return (
-    <div className="overflow-hidden rounded-xl border border-hairline bg-canvas transition-colors hover:border-steel/40">
+    <div className="rounded-xl border border-hairline bg-canvas transition-colors hover:border-steel/40">
       <div className="flex items-center gap-1.5 px-2.5 py-2">
         <FileTypeGlyph kind={kind} />
         <div className="min-w-0 flex-1">
@@ -1970,7 +1972,7 @@ function FileCard({
           items={cardMenuItems(false, c)}
         />
       </div>
-      <div className="aspect-[4/3] w-full overflow-hidden border-t border-hairline-soft bg-fog">
+      <div className="aspect-[4/3] w-full overflow-hidden rounded-b-xl border-t border-hairline-soft bg-fog">
         <FileThumb node={node} />
       </div>
     </div>
