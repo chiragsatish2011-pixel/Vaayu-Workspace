@@ -17,10 +17,9 @@ export default async function FilesPage() {
         avatarDriveId: user.avatarDriveId,
       }}
       active="/files"
+      fullBleed
     >
-      <section className="pt-3 sm:pt-4 pb-6">
-        <FilesManager />
-      </section>
+      <FilesManager />
     </AppShell>
   );
 }

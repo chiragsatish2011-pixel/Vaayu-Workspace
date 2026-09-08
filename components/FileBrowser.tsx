@@ -274,6 +274,7 @@ export function FileBrowser({
   defaultView = "list",
   onClose,
   onUploaded,
+  variant = "card",
 }: {
   projectId?: string;
   projectDriveId: string;
@@ -294,6 +295,8 @@ export function FileBrowser({
   onClose?: () => void;
   /** Called after a successful upload so the parent can bump refreshKey (fresh fetch). */
   onUploaded?: () => void;
+  /** Files page uses full Drive chrome; project modal keeps compact card. */
+  variant?: "drive" | "card";
 }) {
   void projectId;
   const [data, setData] = useState<BrowseResponse | null>(null);
@@ -324,6 +327,11 @@ export function FileBrowser({
   const [gridPath, setGridPath] = useState<string[]>([]);
   const [gridLimit, setGridLimit] = useState(GRID_PAGE_SIZE);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  // Drive shell — elite full-page mode
+  const isDrive = variant === "drive" && manage;
+  const [driveSearch, setDriveSearch] = useState("");
+  const [preview, setPreview] = useState<TreeNode | null>(null);
+  const [detailsNode, setDetailsNode] = useState<TreeNode | null>(null);
   // Drive-identical "+ New" + drag upload (manage only). No persistent
   // drop-zone card — drag works directly onto the list/grid area.
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -503,6 +511,7 @@ export function FileBrowser({
   /**
    * Grid's current folder: walk down from the root by name, clamping to
    * the deepest path that still exists (rename/move-away mid-session).
+   * In Drive mode the same nav is also filtered by the omnibox search.
    */
   const gridNav = useMemo(() => {
     if (!tree || !data) return null;
@@ -518,14 +527,26 @@ export function FileBrowser({
     }
     const dir = sortDir === "asc" ? 1 : -1;
     const byName = (a: TreeNode, b: TreeNode) => dir * a.name.localeCompare(b.name);
-    const folders = Array.from(node.children.values())
+    let folders = Array.from(node.children.values())
       .filter((c) => c.isFolder)
       .sort(byName);
-    const files = Array.from(node.children.values())
+    let files = Array.from(node.children.values())
       .filter((c) => !c.isFolder)
       .sort(byName);
+    if (isDrive && driveSearch.trim()) {
+      const q = driveSearch.trim().toLowerCase();
+      folders = folders.filter((f) => f.name.toLowerCase().includes(q));
+      files = files.filter((f) => f.name.toLowerCase().includes(q));
+    }
     return { node, valid, folders, files };
-  }, [tree, data, gridPath, sortDir]);
+  }, [tree, data, gridPath, sortDir, isDrive, driveSearch]);
+
+  // Keep preview in sync — if its folder vanished, close it
+  useEffect(() => {
+    if (!preview) return;
+    if (!gridNav) return;
+    // no-op, preview stays even when navigating — Drive keeps preview open
+  }, [gridNav, preview]);
 
   // Virtualization
   const parentRef = useRef<HTMLDivElement>(null);
@@ -925,6 +946,34 @@ export function FileBrowser({
   }, [moveNode, moveDestId, realDriveIdOf, runMutation, realIdIndex]);
 
   if (loading) {
+    if (isDrive) {
+      return (
+        <div className="flex flex-1 flex-col bg-[#f8f9fa]">
+          <div className="flex flex-1">
+            <aside className="hidden w-[256px] shrink-0 border-r border-[#e8eaed] bg-[#f8f9fa] p-3 md:flex flex-col">
+              <div className="h-14 animate-pulse rounded-2xl bg-white shadow-sm" />
+              <div className="mt-4 space-y-2">
+                <div className="h-9 rounded-full bg-[#e8f0fe]" />
+                <div className="h-8 rounded-lg bg-white" />
+                <div className="h-8 rounded-lg bg-white" />
+                <div className="h-8 rounded-lg bg-white" />
+              </div>
+            </aside>
+            <div className="flex flex-1 flex-col bg-white md:rounded-tl-2xl md:shadow-sm">
+              <div className="h-[64px] animate-pulse border-b border-[#e8eaed] bg-white" />
+              <div className="flex-1 animate-pulse p-6">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-hairline bg-canvas p-6">
         <div className="animate-pulse space-y-3">
@@ -936,6 +985,21 @@ export function FileBrowser({
     );
   }
   if (error || !data || !tree) {
+    if (isDrive) {
+      return (
+        <div className="flex flex-1 flex-col bg-[#f8f9fa]">
+          <div className="flex flex-1">
+            <aside className="hidden w-[256px] shrink-0 bg-[#f8f9fa] p-3 md:block" />
+            <div className="flex flex-1 flex-col items-center justify-center bg-white md:rounded-tl-2xl p-12 text-center">
+              <p className="text-sm text-error">{error || "Could not load files."}</p>
+              <button onClick={() => void load()} className="mt-3 rounded-full bg-[#0a0a0a] px-5 py-2 text-sm font-semibold text-white">
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-hairline bg-canvas p-6 text-sm text-error">
         {error || "Could not load files."}
@@ -947,6 +1011,273 @@ export function FileBrowser({
   }
 
   const totalLabel = `${data.fileCount} files · ${formatBytes(data.totalBytes)}`;
+
+  // ── Drive variant — full-page, elite, Google Drive-identical shell ──
+  if (isDrive && gridNav) {
+    return (
+      <div className="flex min-h-[calc(100vh-57px)] flex-1 flex-col bg-[#f8f9fa] text-ink">
+        {/* Hidden inputs */}
+        <input ref={fileInputRef} type="file" multiple onChange={handleDriveFilesChange} className="hidden" aria-label="Upload files" />
+        <input ref={folderInputRef} type="file" onChange={handleDriveFolderChange} className="hidden" aria-label="Upload folder" />
+        {/* Drive top: New + search + meta */}
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-[#e8eaed] bg-[#f8f9fa] px-3 py-3 md:px-4">
+          <div className="relative">
+            <button type="button" onClick={() => setNewMenuOpen((v) => !v)} disabled={mutating || uploading} className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-medium shadow-[0_1px_2px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.12)] disabled:opacity-50">
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-[#34a853] via-[#4285f4] to-[#ea4335] text-[10px] font-bold text-white">+</span> New
+            </button>
+            {newMenuOpen && (
+              <>
+                <button type="button" aria-hidden tabIndex={-1} onClick={() => setNewMenuOpen(false)} className="fixed inset-0 z-10 cursor-default bg-transparent" />
+                <div role="menu" className="absolute left-0 top-[48px] z-20 w-64 overflow-hidden rounded-xl border border-[#e8eaed] bg-white py-2 shadow-xl">
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); setNewFolderParent({ id: gridNav.node.id.startsWith("folder-") ? data.root.id : gridNav.node.id, name: gridNav.node.name }); setNewFolderName(""); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa]"><FolderIcon className="h-4 w-4 text-[#5f6368]" /> New folder</button>
+                  <div className="my-2 border-t border-[#e8eaed]" />
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); fileInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa] disabled:opacity-50">📄 File upload</button>
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa] disabled:opacity-50">📁 Folder upload</button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1 max-w-[560px]">
+            <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-[#e8eaed] focus-within:ring-[#1a73e8]/30">
+              <span className="text-[#5f6368]">⌕</span>
+              <input value={driveSearch} onChange={(e) => setDriveSearch(e.target.value)} placeholder={`Search in ${gridNav.node.name || projectName}`} className="w-full bg-transparent text-sm outline-none placeholder:text-[#5f6368]" />
+              {driveSearch && <button onClick={() => setDriveSearch("")} className="text-[#5f6368] hover:text-ink">✕</button>}
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden font-mono text-xs text-[#5f6368] sm:block">{totalLabel}{selected.size>0 ? ` · ${selected.size} selected` : ""}</span>
+            {selected.size>0 && (
+              <>
+                <button onClick={downloadSelected} disabled={downloading==="selected"} className="hidden sm:inline-flex rounded-full bg-[#1a73e8] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#185abc] disabled:opacity-50">{downloading==="selected"?"Zipping…":"Download"}</button>
+                <button onClick={deleteSelected} disabled={!!deleting} className="hidden sm:inline-flex rounded-full border border-[#e8eaed] bg-white px-4 py-1.5 text-xs font-medium text-[#5f6368] hover:bg-[#f8f9fa]">Move to trash</button>
+              </>
+            )}
+            <div className="flex rounded-full border border-[#e8eaed] bg-white p-1">
+              <button onClick={()=>setView("grid")} aria-pressed={view==="grid"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="grid"?"bg-[#e8f0fe] text-[#1967d2]":"text-[#5f6368]"}`} title="Grid">▦</button>
+              <button onClick={()=>setView("list")} aria-pressed={view==="list"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="list"?"bg-[#e8f0fe] text-[#1967d2]":"text-[#5f6368]"}`} title="List">☰</button>
+            </div>
+            <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} className="grid h-8 w-8 place-items-center rounded-full bg-white border border-[#e8eaed] text-[#5f6368] hover:bg-[#f8f9fa]" title={`Sort ${sortDir}`}>↕</button>
+          </div>
+        </div>
+
+        <div className="flex flex-1 min-h-0">
+          {/* Left Drive nav */}
+          <aside className="hidden w-[256px] shrink-0 flex-col bg-[#f8f9fa] px-3 py-3 md:flex">
+            <nav className="space-y-1">
+              <button onClick={()=>{setGridPath([]); setDriveSearch("");}} className={`flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium ${gridNav.valid.length===0?"bg-[#c2e7ff] text-[#001d35]":"hover:bg-[#e8eaed] text-[#1f1f1f]"}`}>
+                <span className="grid h-5 w-5 place-items-center text-base">◈</span> My Drive
+              </button>
+              <div className="px-3 py-2 text-xs font-medium text-[#444746]">Folders · {gridNav.folders.length} · Files · {gridNav.files.length}</div>
+              <div className="rounded-xl bg-white p-3 shadow-sm border border-[#e8eaed]">
+                <p className="text-xs font-medium">Storage</p>
+                <div className="mt-2 h-1 rounded-full bg-[#e8eaed]"><div className="h-1 rounded-full bg-[#1a73e8]" style={{width: `${Math.min(100, Math.round((data.totalBytes/(15*1024**3))*100))}%`}} /></div>
+                <p className="mt-1 font-mono text-[11px] text-[#5f6368]">{formatBytes(data.totalBytes)} used</p>
+                <a href="https://drive.google.com/drive/quota" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-[#1a73e8] hover:underline">Get more storage</a>
+              </div>
+            </nav>
+            {(uploadError || zipProgress || scanning || uploading) && (
+              <div className="mt-4 space-y-2">
+                {uploadError && <div className="rounded-lg bg-[#fce8e6] px-3 py-2 text-xs text-[#a50e0e] flex justify-between gap-2"><span className="min-w-0">{uploadError}</span><button onClick={()=>setUploadError(null)} className="shrink-0 underline">Dismiss</button></div>}
+                {zipProgress && <div className="rounded-lg bg-[#e8f0fe] px-3 py-2 font-mono text-xs text-[#1967d2]">{zipProgress}</div>}
+                {scanning && <div className="rounded-lg bg-white border border-[#e8eaed] px-3 py-2 text-xs text-[#5f6368]">Reading dropped items…</div>}
+                {uploading && <div className="rounded-lg bg-[#e8f0fe] px-3 py-2 text-xs text-[#1967d2]">Uploading — see toast at bottom right…</div>}
+              </div>
+            )}
+          </aside>
+
+          {/* Main canvas — white Drive canvas */}
+          <div className="flex min-w-0 flex-1 flex-col bg-white md:rounded-tl-2xl md:shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+            {/* Breadcrumb + inline actions */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#e8eaed] px-4 py-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                {gridNav.valid.length>0 ? (
+                  <button onClick={()=>{setGridPath(p=>p.slice(0,-1)); setGridLimit(GRID_PAGE_SIZE);}} className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f1f3f4] text-[#5f6368]">←</button>
+                ) : <span className="grid h-8 w-8 place-items-center text-[#dadce0]">←</span>}
+                <button onClick={()=>{setGridPath([]); setDriveSearch("");}} className={`rounded-full px-3 py-1.5 text-sm ${gridNav.valid.length===0?"bg-[#e8f0fe] font-medium text-[#1967d2]":"hover:bg-[#f1f3f4] text-[#5f6368]"}`}>{data.root.name}</button>
+                {gridNav.valid.map((seg,i)=>(
+                  <span key={i} className="flex items-center gap-1">
+                    <span className="text-[#dadce0]">/</span>
+                    <button onClick={()=>setGridPath(gridNav.valid.slice(0,i+1))} className={`rounded-full px-2.5 py-1 text-sm truncate max-w-[140px] ${i===gridNav.valid.length-1?"bg-[#e8f0fe] font-medium text-[#1967d2]":"hover:bg-[#f1f3f4] text-[#444746]"}`}>{seg}</button>
+                  </span>
+                ))}
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={()=>void load(true)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f1f3f4] text-[#5f6368]" title="Refresh">⟳</button>
+                <span className="hidden sm:inline font-mono text-xs text-[#5f6368]">{gridNav.folders.length+gridNav.files.length} items{driveSearch?` · filtered “${driveSearch}”`:""}</span>
+              </div>
+            </div>
+
+            {/* Files canvas */}
+            <div
+              className="relative flex-1 overflow-auto bg-white"
+              onDragOver={manage ? (e)=>{e.preventDefault(); setDragActive(true);} : undefined}
+              onDragLeave={manage ? ()=>setDragActive(false) : undefined}
+              onDrop={manage ? handleDriveDrop : undefined}
+            >
+              {manage && dragActive && (
+                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[#e8f0fe]/70 backdrop-blur-[1px]">
+                  <p className="rounded-full bg-[#1a73e8] px-6 py-3 text-sm font-medium text-white shadow-lg">Drop files or folder here to upload</p>
+                </div>
+              )}
+
+              {view==="grid" ? (
+                <div className="p-4">
+                  {gridNav.folders.length>0 && (
+                    <>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[#5f6368]">Folders</p>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {gridNav.folders.slice(0,gridLimit).map((node)=>(
+                          <button key={node.relativePath||node.id} onClick={()=>{setGridPath([...gridNav.valid, node.name]); setGridLimit(GRID_PAGE_SIZE);}} onDoubleClick={()=>{setGridPath([...gridNav.valid, node.name]);}} className="group flex items-center gap-3 rounded-xl border border-[#dadce0] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-[#f8f9fa] hover:shadow-[0_1px_6px_rgba(0,0,0,0.10)] text-[#1f1f1f]">
+                            <span className="grid h-9 w-9 place-items-center rounded-lg bg-[#f1f3f4] text-[#5f6368] group-hover:bg-white"><FolderIcon className="h-5 w-5" /></span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{node.name}</span>
+                            <span onClick={(e)=>{e.stopPropagation(); setOpenMenu(openMenu===node.relativePath?null:node.relativePath||node.id);}} className="grid h-7 w-7 place-items-center rounded-full hover:bg-white text-[#5f6368]">⋮</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {gridNav.files.length>0 && (
+                    <div className={gridNav.folders.length>0?"mt-6":""}>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[#5f6368]">Files</p>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                        {gridNav.files.slice(0,gridLimit).map((node)=> {
+                          const isSelected = selected.has(node.id);
+                          return (
+                          <div
+                            key={node.relativePath||node.id}
+                            onClick={()=>setPreview(node)}
+                            onDoubleClick={()=>setPreview(node)}
+                            onContextMenu={(e)=>{e.preventDefault(); setDetailsNode(node);}}
+                            className={`group cursor-pointer overflow-hidden rounded-xl border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] ${isSelected?"border-[#1a73e8] ring-2 ring-[#1a73e8]/20":"border-[#dadce0]"}`}
+                            title={`${node.name} — click or double-click to preview · right-click for details`}
+                          >
+                            <div className="relative aspect-[4/3] overflow-hidden bg-[#f8f9fa] border-b border-[#e8eaed]">
+                              <FileThumb node={node} />
+                              <label onClick={(e)=>e.stopPropagation()} className={`absolute left-2 top-2 grid h-5 w-5 place-items-center rounded-full border bg-white shadow-sm transition-opacity ${isSelected?"opacity-100 border-[#1a73e8]":"opacity-0 group-hover:opacity-100 border-[#dadce0]"}`}>
+                                <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(node.id)} className="h-3 w-3 accent-[#1a73e8]" />
+                              </label>
+                              <button onClick={(e)=>{e.stopPropagation(); setDetailsNode(node);}} className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[#5f6368] shadow-sm opacity-0 group-hover:opacity-100 hover:bg-white" title="Details">ⓘ</button>
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-2.5">
+                              <FileTypeGlyph kind={mediaKind(node.mimeType, node.name)} />
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[#1f1f1f]">{node.name}</span>
+                              <span className="hidden font-mono text-[11px] text-[#5f6368] group-hover:inline">{formatBytes(Number(node.size||0)||0)}</span>
+                            </div>
+                          </div>
+                        );})}
+                      </div>
+                    </div>
+                  )}
+
+                  {gridNav.folders.length===0 && gridNav.files.length===0 && (
+                    <div className="grid place-items-center py-16 text-center">
+                      <div className="rounded-2xl border border-dashed border-[#dadce0] bg-[#f8f9fa] px-8 py-10">
+                        <p className="text-sm font-medium text-[#1f1f1f]">{driveSearch?"No matches for “"+driveSearch+"”":"This folder is empty"}</p>
+                        <p className="mt-1 text-xs text-[#5f6368]">{emptyText ?? "Drag files here or use New to create."}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  <div className="sticky top-0 z-[1] grid grid-cols-[32px_1fr_120px_140px_80px] gap-2 border-b border-[#e8eaed] bg-white px-4 py-2 text-xs font-medium text-[#5f6368]">
+                    <span></span><span>Name</span><span>Owner</span><span>Last modified</span><span className="text-right">Size</span>
+                  </div>
+                  <div className="divide-y divide-[#f1f3f4]">
+                    {[...gridNav.folders, ...gridNav.files].slice(0,gridLimit).map((node)=> {
+                      const isFolder = node.isFolder;
+                      const isSelected = !isFolder && selected.has(node.id);
+                      return (
+                        <div
+                          key={node.relativePath||node.id}
+                          onClick={()=> isFolder ? setGridPath([...gridNav.valid, node.name]) : setPreview(node)}
+                          onDoubleClick={()=> isFolder ? setGridPath([...gridNav.valid, node.name]) : setPreview(node)}
+                          onContextMenu={(e)=>{e.preventDefault(); if(!isFolder) setDetailsNode(node);}}
+                          className={`grid cursor-pointer grid-cols-[32px_1fr_120px_140px_80px] items-center gap-2 px-4 py-2 hover:bg-[#f8f9fa] ${isSelected?"bg-[#e8f0fe]":""}`}
+                        >
+                          <label onClick={(e)=>e.stopPropagation()} className="grid place-items-center">
+                            <input type="checkbox" checked={isFolder?false:isSelected} onChange={()=>!isFolder && toggleSelect(node.id)} className={`h-4 w-4 rounded border-[#5f6368] accent-[#1a73e8] ${isFolder?"opacity-0 pointer-events-none":""}`} />
+                          </label>
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className={`grid h-8 w-8 place-items-center rounded ${isFolder?"bg-[#f1f3f4] text-[#5f6368]":"bg-white border border-[#e8eaed]"}`}>{isFolder?<FolderIcon className="h-4 w-4" />:<span className="text-xs">{fileIconFor(node.mimeType, node.name)}</span>}</span>
+                            <span className="truncate text-sm text-[#1f1f1f]">{node.name}</span>
+                          </span>
+                          <span className="truncate text-xs text-[#5f6368]">me</span>
+                          <span className="text-xs text-[#5f6368]">{node.file?.modifiedTime ? new Date(node.file.modifiedTime).toLocaleDateString() : "—"}</span>
+                          <span className="text-right font-mono text-xs text-[#5f6368]">{isFolder?`${(node as any).totalDescendantFiles??"—"} items`:formatBytes(Number(node.size||0)||0)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {[...gridNav.folders, ...gridNav.files].length===0 && <p className="p-8 text-center text-sm text-[#5f6368]">{driveSearch?"No matches":"Empty folder"}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Details pane — Drive-style right drawer */}
+          {detailsNode && (
+            <aside className="hidden w-[320px] shrink-0 flex-col border-l border-[#e8eaed] bg-white xl:flex">
+              <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-3">
+                <span className="text-sm font-medium">Details</span>
+                <button onClick={()=>setDetailsNode(null)} className="grid h-7 w-7 place-items-center rounded-full hover:bg-[#f1f3f4]">✕</button>
+              </div>
+              <div className="p-4">
+                <div className="aspect-video overflow-hidden rounded-xl border border-[#e8eaed] bg-[#f8f9fa]"><FileThumb node={detailsNode} /></div>
+                <p className="mt-3 truncate text-sm font-medium">{detailsNode.name}</p>
+                <p className="font-mono text-xs text-[#5f6368]">{detailsNode.mimeType} · {formatBytes(Number(detailsNode.size||0)||0)}</p>
+                <div className="mt-4 flex gap-2">
+                  <button onClick={()=>{setPreview(detailsNode);}} className="flex-1 rounded-full bg-[#1a73e8] py-2 text-xs font-medium text-white">Preview</button>
+                  <button onClick={()=>{downloadFile(detailsNode);}} className="flex-1 rounded-full border border-[#dadce0] bg-white py-2 text-xs font-medium">Download</button>
+                </div>
+                <div className="mt-4 space-y-2 border-t border-[#e8eaed] pt-4 text-xs">
+                  <div className="flex justify-between"><span className="text-[#5f6368]">Location</span><span className="font-medium">{gridNav.node.name}</span></div>
+                  <div className="flex justify-between"><span className="text-[#5f6368]">Owner</span><span>me</span></div>
+                  <div className="flex justify-between"><span className="text-[#5f6368]">Modified</span><span>{detailsNode.file?.modifiedTime?new Date(detailsNode.file.modifiedTime).toLocaleString():"—"}</span></div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={()=>{const id=realDriveIdOf(detailsNode); if(id){setRenamingId(id); setRenameDraft(detailsNode.name);}}} className="rounded-full border border-[#dadce0] px-3 py-1.5 text-xs hover:bg-[#f8f9fa]">Rename</button>
+                  <button onClick={()=>{setMoveNode(detailsNode); setMoveDestId(null);}} className="rounded-full border border-[#dadce0] px-3 py-1.5 text-xs hover:bg-[#f8f9fa]">Move</button>
+                  <button onClick={()=>deleteNode(detailsNode)} className="rounded-full border border-[#dadce0] px-3 py-1.5 text-xs text-[#a50e0e] hover:bg-[#fce8e6]">Trash</button>
+                </div>
+              </div>
+            </aside>
+          )}
+        </div>
+
+        {/* Full-view preview — Drive-like */}
+        {preview && (
+          <DrivePreview
+            node={preview}
+            onClose={()=>setPreview(null)}
+            onDownload={()=>downloadFile(preview)}
+            onDetails={()=>{setDetailsNode(preview);}}
+          />
+        )}
+
+        {/* New Folder / Move dialogs — keep existing */}
+        {newFolderParent && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#1f1f1f]/40 p-4 backdrop-blur-sm">
+            <form onSubmit={(e)=>{e.preventDefault(); submitNewFolder();}} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+              <h3 className="text-base font-medium">New folder</h3>
+              <p className="mt-1 truncate font-mono text-xs text-[#5f6368]">inside “{newFolderParent.name}”</p>
+              <input autoFocus value={newFolderName} onChange={(e)=>setNewFolderName(e.target.value)} placeholder="Untitled folder" maxLength={120} disabled={mutating} className="mt-4 w-full rounded-lg border border-[#dadce0] px-3 py-2.5 text-sm outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/20" />
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={()=>{setNewFolderParent(null); setNewFolderName("");}} disabled={mutating} className="rounded-full px-5 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa]">Cancel</button>
+                <button type="submit" disabled={mutating || !newFolderName.trim()} className="rounded-full bg-[#1a73e8] px-6 py-2 text-sm font-medium text-white hover:bg-[#185abc] disabled:opacity-50">{mutating?"Creating…":"Create"}</button>
+              </div>
+            </form>
+          </div>
+        )}
+        {moveNode && (
+          <MoveDialog node={moveNode} options={folderOptions()} excludedIds={moveNode.isFolder?descendantIds(moveNode):new Set<string>()} selectedId={moveDestId} onSelect={setMoveDestId} busy={mutating} onCancel={()=>{setMoveNode(null); setMoveDestId(null);}} onConfirm={submitMove} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative rounded-2xl border border-hairline bg-canvas overflow-hidden">
@@ -2251,6 +2582,92 @@ function FileCard({
       <div className="aspect-[4/3] w-full overflow-hidden rounded-b-xl border-t border-hairline-soft bg-fog">
         <FileThumb node={node} />
       </div>
+    </div>
+  );
+}
+
+/* ── Drive full-view — Google Drive-style preview overlay ────────────── */
+function DrivePreview({ node, onClose, onDownload, onDetails }: { node: TreeNode; onClose: () => void; onDownload: () => void; onDetails: () => void }) {
+  const kind = mediaKind(node.mimeType, node.name);
+  const fileId = node.file?.id ?? node.id;
+  const downloadUrl = `/api/drive/download?id=${encodeURIComponent(fileId)}`;
+  const isImageKind = kind === "image";
+  const isVideoKind = kind === "video";
+  const isAudioKind = kind === "audio";
+  const isCodeKind = kind === "code";
+  const { snippet, loading } = useFileSnippet(node.mimeType, node.name, node.id, isCodeKind);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex flex-col bg-[#1f1f1f]/80 backdrop-blur-sm">
+      <div className="flex items-center gap-3 bg-[#1f1f1f] px-4 py-3 text-white">
+        <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10" aria-label="Close">✕</button>
+        <span className="grid h-8 w-8 place-items-center rounded bg-white/10"><FileTypeGlyph kind={kind} /></span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{node.name}</span>
+        <span className="hidden font-mono text-xs text-white/60 sm:block">{formatBytes(Number(node.size || 0) || 0)} · {node.mimeType.split("/").pop()}</span>
+        <button onClick={onDetails} className="hidden sm:inline-flex rounded-full border border-white/20 px-3 py-1.5 text-xs hover:bg-white/10">Details</button>
+        <button onClick={onDownload} className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#1f1f1f] hover:bg-white/90">Download</button>
+        <a href={downloadUrl} target="_blank" rel="noreferrer" className="hidden sm:inline-flex rounded-full border border-white/20 px-3 py-2 text-xs hover:bg-white/10">Open in new tab</a>
+      </div>
+
+      <div className="flex flex-1 min-h-0 items-center justify-center p-4 sm:p-8 overflow-auto" onClick={onClose}>
+        <div className="max-h-full max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+          {isImageKind ? (
+            <div className="overflow-hidden rounded-xl bg-white shadow-2xl">
+              {/* eslint-disable @next/next/no-img-element */}
+              {!imgFailed ? (
+                <img src={downloadUrl} alt={node.name} className="max-h-[80vh] w-full object-contain bg-[#f8f9fa]" onError={() => setImgFailed(true)} />
+              ) : (
+                <div className="grid place-items-center p-12 bg-[#f8f9fa]">
+                  <ImageIcon className="h-12 w-12 text-[#5f6368]" />
+                  <p className="mt-2 text-sm text-[#5f6368]">Couldn’t load preview — try download.</p>
+                </div>
+              )}
+            </div>
+          ) : isVideoKind ? (
+            <div className="overflow-hidden rounded-xl bg-black shadow-2xl">
+              <video controls src={downloadUrl} className="max-h-[80vh] w-full" />
+            </div>
+          ) : isAudioKind ? (
+            <div className="rounded-xl bg-white p-8 shadow-2xl text-center">
+              <div className="mx-auto grid h-20 w-20 place-items-center rounded-2xl bg-[#ef4444] text-white"><MusicIcon className="h-10 w-10" /></div>
+              <p className="mt-4 font-medium">{node.name}</p>
+              <audio controls src={downloadUrl} className="mt-4 w-full" />
+            </div>
+          ) : isCodeKind ? (
+            <div className="overflow-hidden rounded-xl bg-white shadow-2xl">
+              <div className="border-b border-[#e8eaed] bg-[#f8f9fa] px-4 py-2 flex items-center justify-between">
+                <span className="font-mono text-xs text-[#5f6368]">{node.name}</span>
+                <a href={downloadUrl} download className="text-xs font-medium text-[#1a73e8] hover:underline">Download raw</a>
+              </div>
+              <pre className="max-h-[70vh] overflow-auto bg-[#ffffff] p-6 font-mono text-[13px] leading-relaxed text-[#1f1f1f] whitespace-pre-wrap break-words">
+                {loading ? "Loading preview…" : snippet ? snippet : "No text preview — download to view."}
+              </pre>
+            </div>
+          ) : node.mimeType.includes("pdf") ? (
+            <div className="overflow-hidden rounded-xl bg-white shadow-2xl">
+              <iframe src={downloadUrl} title={node.name} className="h-[80vh] w-full bg-white" />
+            </div>
+          ) : (
+            <div className="rounded-xl bg-white p-8 shadow-2xl text-center">
+              <div className="mx-auto grid h-20 w-20 place-items-center rounded-2xl bg-[#e8f0fe] text-[#1967d2]"><DocIcon className="h-10 w-10" /></div>
+              <p className="mt-4 font-medium">{node.name}</p>
+              <p className="font-mono text-xs text-[#5f6368]">{node.mimeType}</p>
+              <p className="mt-2 text-sm text-[#5f6368]">Preview not available for this type — download to view the full file, just like Drive.</p>
+              <button onClick={onDownload} className="mt-4 rounded-full bg-[#1a73e8] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#185abc]">Download</button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="bg-[#1f1f1f] px-4 py-2 text-center font-mono text-[11px] text-white/50">Click outside to close · Esc · Double-click also opens · Full Drive preview</div>
     </div>
   );
 }

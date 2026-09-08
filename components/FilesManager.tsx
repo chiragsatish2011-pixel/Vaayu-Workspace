@@ -74,15 +74,18 @@ export function FilesManager() {
   }
 
   return (
-    <FileBrowser
-      projectDriveId={root.id}
-      projectName={root.name}
-      contextNoun="folder"
-      emptyText="No files yet — use New to create a folder or drag files here to upload."
-      refreshKey={refreshKey}
-      onUploaded={handleUploaded}
-      manage
-      defaultView="grid"
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <FileBrowser
+        projectDriveId={root.id}
+        projectName={root.name}
+        contextNoun="folder"
+        emptyText="No files yet — use New to create a folder or drag files here to upload."
+        refreshKey={refreshKey}
+        onUploaded={handleUploaded}
+        manage
+        defaultView="grid"
+        variant="drive"
+      />
+    </div>
   );
 }
