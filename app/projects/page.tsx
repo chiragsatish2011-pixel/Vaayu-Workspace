@@ -30,6 +30,8 @@ export default async function ProjectsPage() {
         userId: projects.userId,
         userEmail: users.email,
         userRole: users.role,
+        userDisplayName: users.displayName,
+        userAvatarDriveId: users.avatarDriveId,
       })
       .from(projects)
       .innerJoin(users, eq(projects.userId, users.id))
@@ -45,7 +47,15 @@ export default async function ProjectsPage() {
   }
 
   return (
-    <AppShell user={{ email: user.email, role: user.role }} active="/projects">
+    <AppShell
+      user={{
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarDriveId: user.avatarDriveId,
+      }}
+      active="/projects"
+    >
       <section className="pt-10 sm:pt-14 pb-16">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
@@ -84,6 +94,7 @@ export default async function ProjectsPage() {
               id: user.id,
               email: user.email,
               role: user.role,
+              displayName: user.displayName ?? null,
             }}
           />
         </Reveal>

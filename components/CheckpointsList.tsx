@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/Badge";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export interface CheckpointItem {
   id: string;
@@ -11,6 +12,8 @@ export interface CheckpointItem {
   userId: string;
   userEmail: string;
   userRole: "admin" | "member";
+  displayName?: string | null;
+  avatarDriveId?: string | null;
 }
 
 export interface CheckpointViewer {
@@ -252,7 +255,8 @@ export function CheckpointsList({
         ) : (
           <div className="relative mt-6 space-y-6 pl-4 sm:pl-6 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-[2px] before:bg-hairline-soft sm:before:left-[23px]">
             {items.map((item) => {
-              const initial = (item.userEmail?.[0] ?? "?").toUpperCase();
+              const primary = (item.displayName && item.displayName.trim()) || item.userEmail;
+              const secondary = item.userEmail;
               const isEditing = editingId === item.id;
               const isDeleting = deletingId === item.id;
               const edited =
@@ -263,18 +267,19 @@ export function CheckpointsList({
 
               return (
                 <div key={item.id} className="relative flex items-start gap-4">
-                  {/* Timeline dot/avatar */}
-                  <span className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink font-display text-xs font-bold text-white shadow-sm ring-4 ring-canvas sm:h-10 sm:w-10 sm:text-sm">
-                    {initial}
+                  {/* Timeline avatar — deterministic color, display name */}
+                  <span className="relative z-10 shrink-0 rounded-full shadow-sm ring-4 ring-canvas">
+                    <UserAvatar displayName={item.displayName} email={item.userEmail} avatarDriveId={item.avatarDriveId} size={40} />
                   </span>
 
                   {/* Content card */}
                   <div className="flex-1 rounded-xl border border-hairline bg-fog/50 p-4 transition-colors hover:bg-fog">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline-soft/60 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-ink">
-                          {item.userEmail}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-ink">
+                          {primary}
                         </span>
+                        <span className="hidden truncate font-mono text-xs text-steel sm:inline">{secondary}</span>
                         <Badge tone={item.userRole === "admin" ? "phase" : "live"}>
                           {item.userRole}
                         </Badge>

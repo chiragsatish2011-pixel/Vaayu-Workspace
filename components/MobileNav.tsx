@@ -119,10 +119,6 @@ export function NavLinks({
                   : "text-charcoal hover:bg-fog"
               }`}
             >
-              <span
-                className="h-2 w-2 shrink-0 rounded-full transition-transform duration-200 group-hover:scale-125"
-                style={{ background: item.dot }}
-              />
               <span className="grid place-items-center text-steel transition-colors duration-200 group-hover:text-ink">
                 {item.icon}
               </span>

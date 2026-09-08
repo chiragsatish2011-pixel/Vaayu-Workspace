@@ -159,18 +159,33 @@ function flattenVisible(root: TreeNode, expanded: Set<string>): FlatNode[] {
 const snippetCache = new Map<string, { snippet: string; truncated: boolean }>();
 const thumbnailCache = new Map<string, string>(); // id -> thumbnailLink (already in metadata, but cache for future)
 
-/* ── Component ───────────────────────────────────────────────────── */
+/* ── Component ─────────────────────────────────────────────────────
+ * General-purpose Drive folder browser. Originally built for per-project
+ * folders; now also rooted at the team folder by the Files page — pass any
+ * folder id as `projectDriveId` plus a display `projectName`. Delete moves
+ * items to Drive trash (recoverable), never permanent-deletes.
+ */
 export function FileBrowser({
   projectId,
   projectDriveId,
   projectName,
+  emptyText,
+  contextNoun = "project",
+  refreshKey = 0,
   onClose,
 }: {
-  projectId: string;
+  projectId?: string;
   projectDriveId: string;
   projectName: string;
+  /** Empty-state copy override (default mentions the context noun). */
+  emptyText?: string;
+  /** Human noun for copy ("project" | "folder"). */
+  contextNoun?: string;
+  /** Bump to refetch listing (e.g. after uploads land from elsewhere). */
+  refreshKey?: number;
   onClose?: () => void;
 }) {
+  void projectId;
   const [data, setData] = useState<BrowseResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,46 +193,42 @@ export function FileBrowser({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const [zipProgress, setZipProgress] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  // Fetch browse data
-  useEffect(() => {
-    let cancelled = false;
+  // Fetch browse data (extracted so delete/upload flows can refetch on demand)
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    fetch(`/api/drive/browse?id=${encodeURIComponent(projectDriveId)}`, { cache: "no-store" })
-      .then(async (r) => {
-        const j = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(j?.error || "Could not load folder.");
-        return j as BrowseResponse;
-      })
-      .then((j) => {
-        if (cancelled) return;
-        setData(j);
-        // Default: expand first level only for large projects, or all for small
-        // Requirement 3: collapsed default, only first level expanded for huge
-        const tree = buildTree(j.files, j.root.name, j.root.id);
-        const firstLevel = Array.from(tree.children.values())
-          .filter((n) => n.isFolder)
-          .slice(0, 3)
-          .map((n) => n.relativePath);
-        // If small project (<100 files), expand first level; if huge, keep collapsed
-        if (j.fileCount < 100) {
-          setExpanded(new Set(firstLevel));
-        } else {
-          setExpanded(new Set()); // collapsed for large
-        }
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectDriveId]);
+    try {
+      const r = await fetch(`/api/drive/browse?id=${encodeURIComponent(projectDriveId)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(j?.error || "Could not load folder.");
+      setData(j as BrowseResponse);
+      // Default: expand first level only for large projects, or all for small
+      // Requirement 3: collapsed default, only first level expanded for huge
+      const tree = buildTree((j as BrowseResponse).files, (j as BrowseResponse).root.name, (j as BrowseResponse).root.id);
+      const firstLevel = Array.from(tree.children.values())
+        .filter((n) => n.isFolder)
+        .slice(0, 3)
+        .map((n) => n.relativePath);
+      // If small project (<100 files), expand first level; if huge, keep collapsed
+      if ((j as BrowseResponse).fileCount < 100) {
+        setExpanded(new Set(firstLevel));
+      } else {
+        setExpanded(new Set()); // collapsed for large
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load.");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectDriveId, refreshKey]);
+
+  useEffect(() => {
+    // Fire-and-forget is safe here: React 18+ ignores state updates after
+    // unmount, and every load() run is idempotent (full listing replace).
+    void load();
+  }, [load]);
 
   const tree = useMemo(() => {
     if (!data) return null;
@@ -403,6 +414,93 @@ export function FileBrowser({
     }
   }, [selected, projectName, tree]);
 
+  // ── Delete → Drive trash (recoverable, never permanent) ──────────
+  // Real Drive ids only: intermediate tree nodes carry synthetic
+  // `folder-<path>` ids — filtered here (the server would refuse them
+  // anyway, but skipping client-side keeps confirms honest).
+  const realDriveIdOf = useCallback((node: TreeNode): string | null => {
+    const id = node.file?.id ?? node.id;
+    if (!id || id.startsWith("folder-")) return null;
+    return id;
+  }, []);
+
+  const trashIds = useCallback(
+    async (ids: string[], confirmText: string) => {
+      if (ids.length === 0) return;
+      if (!window.confirm(confirmText)) return;
+      setDeleting(ids.length === 1 ? ids[0]! : "selected");
+      try {
+        const res = await fetch("/api/drive/trash", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(j?.error || "Trash failed.");
+        const failed = (
+          Array.isArray(j?.failed) ? j.failed : []
+        ) as { id: string; error: string }[];
+        // Refetch (the server invalidated its browse cache on trash) and
+        // clear selection — the list itself is the confirmation.
+        setSelected(new Set());
+        await load();
+        if (failed.length > 0) {
+          alert(
+            `Moved ${ids.length - failed.length} of ${ids.length} items to trash.\nFailed:\n${failed
+              .slice(0, 5)
+              .map((f) => `• ${f.error}`)
+              .join("\n")}`
+          );
+        }
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Trash failed.");
+      } finally {
+        setDeleting(null);
+      }
+    },
+    [load]
+  );
+
+  const deleteNode = useCallback(
+    (node: TreeNode) => {
+      const id = realDriveIdOf(node);
+      if (!id) return;
+      const detail = node.isFolder
+        ? `"${node.name}" and everything inside it (${countDescendantFiles(node)} files, ${formatBytes(sumDescendantBytes(node))})`
+        : `"${node.name}" (${formatBytes(Number(node.size || 0) || 0)})`;
+      void trashIds(
+        [id],
+        `Move ${detail} to Drive trash?\n\nYou can restore it from Google Drive Trash.`
+      );
+    },
+    [realDriveIdOf, trashIds]
+  );
+
+  const deleteSelected = useCallback(() => {
+    if (selected.size === 0 || !tree) return;
+    // Selection holds file ids (folder-select expands to descendant files);
+    // resolve each through the tree to its real Drive id.
+    const index = new Map<string, TreeNode>();
+    const walk = (n: TreeNode) => {
+      index.set(n.id, n);
+      if (n.isFolder) for (const c of n.children.values()) walk(c);
+    };
+    walk(tree);
+    const ids = [...new Set(
+      Array.from(selected)
+        .map((selId) => {
+          const node = index.get(selId);
+          return node ? realDriveIdOf(node) : null;
+        })
+        .filter((id): id is string => id !== null)
+    )];
+    if (ids.length === 0) return;
+    void trashIds(
+      ids,
+      `Move ${ids.length} selected ${ids.length === 1 ? "item" : "items"} to Drive trash?\n\nYou can restore from Google Drive Trash.`
+    );
+  }, [selected, tree, realDriveIdOf, trashIds]);
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-hairline bg-canvas p-6">
@@ -418,7 +516,7 @@ export function FileBrowser({
     return (
       <div className="rounded-2xl border border-hairline bg-canvas p-6 text-sm text-error">
         {error || "Could not load files."}
-        <button onClick={() => window.location.reload()} className="ml-2 underline">
+        <button onClick={() => void load()} className="ml-2 underline">
           Retry
         </button>
       </div>
@@ -446,6 +544,13 @@ export function FileBrowser({
               >
                 {downloading === "selected" ? "Zipping…" : "Download selected"}
               </button>
+              <button
+                onClick={deleteSelected}
+                disabled={deleting !== null}
+                className="rounded-full border border-hairline px-4 py-1.5 text-xs font-semibold text-error transition-colors hover:border-error disabled:opacity-50"
+              >
+                {deleting === "selected" ? "Trashing…" : "Delete selected"}
+              </button>
               <button onClick={() => setSelected(new Set())} className="text-xs text-steel underline">
                 Clear
               </button>
@@ -457,7 +562,7 @@ export function FileBrowser({
               const totalFiles = countDescendantFiles(rootNode);
               const totalBytes = sumDescendantBytes(rootNode);
               if (totalFiles > 1000 || totalBytes > 500 * 1024 * 1024) {
-                const ok = window.confirm(`Download entire project "${projectName}" — ${formatBytes(totalBytes)} across ${totalFiles} files — as zip? This streams without buffering.`);
+                const ok = window.confirm(`Download entire ${contextNoun} "${projectName}" — ${formatBytes(totalBytes)} across ${totalFiles} files — as zip? This streams without buffering.`);
                 if (!ok) return;
               }
               // Use zip endpoint for whole project
@@ -541,12 +646,14 @@ export function FileBrowser({
                   onDownloadFile={downloadFile}
                   onDownloadFolder={downloadFolder}
                   downloading={downloading === flatNode.node.id}
+                  onDeleteNode={deleteNode}
+                  deleteBusy={deleting !== null}
                 />
               </div>
             );
           })}
         </div>
-        {flat.length === 0 && <p className="p-8 text-center text-sm text-steel">No files in this project.</p>}
+        {flat.length === 0 && <p className="p-8 text-center text-sm text-steel">{emptyText ?? `No files in this ${contextNoun} yet.`}</p>}
       </div>
 
       <div className="border-t border-hairline-soft bg-fog/30 px-4 py-2 font-mono text-[11px] text-steel">
@@ -568,6 +675,8 @@ function FileRow({
   onDownloadFile,
   onDownloadFolder,
   downloading,
+  onDeleteNode,
+  deleteBusy,
 }: {
   flatNode: FlatNode;
   depth: number;
@@ -579,6 +688,8 @@ function FileRow({
   onDownloadFile: (file: BrowseFile | TreeNode) => void;
   onDownloadFolder: (node: TreeNode) => void;
   downloading: boolean;
+  onDeleteNode: (node: TreeNode) => void;
+  deleteBusy: boolean;
 }) {
   const { node } = flatNode;
   const isFolder = node.isFolder;
@@ -696,12 +807,13 @@ function FileRow({
         )}
       </div>
 
-      {/* Download action */}
+      {/* Download + trash actions */}
+      <div className="flex shrink-0 items-center gap-1.5">
       {isFolder ? (
         <button
           onClick={() => onDownloadFolder(node)}
           disabled={downloading}
-          className="shrink-0 rounded-full border border-hairline bg-canvas px-3 py-1 text-xs font-semibold text-ink hover:border-ink disabled:opacity-50"
+          className="rounded-full border border-hairline bg-canvas px-3 py-1 text-xs font-semibold text-ink hover:border-ink disabled:opacity-50"
           title="Download folder as zip"
         >
           {downloading ? "Zipping…" : "Download"}
@@ -710,12 +822,21 @@ function FileRow({
         <button
           onClick={() => onDownloadFile(node as any)}
           disabled={downloading}
-          className="shrink-0 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+          className="rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
           title="Download file"
         >
           {downloading ? "…" : "Download"}
         </button>
       )}
+      <button
+        onClick={() => onDeleteNode(node)}
+        disabled={deleteBusy}
+        className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-stone transition-colors hover:border-error hover:text-error disabled:opacity-50"
+        title={isFolder ? "Move folder to Drive trash" : "Move file to Drive trash"}
+      >
+        Delete
+      </button>
+      </div>
     </div>
   );
 }

@@ -48,38 +48,9 @@ function isPublicPath(pathname: string): boolean {
 }
 
 export default function middleware(req: NextRequest, ...rest: unknown[]) {
-  // Let Next.js internals / static assets through (matcher already excludes
-  // most, but keep this cheap guard for clarity).
   if (isPublicPath(req.nextUrl.pathname)) {
-    // Still run the underlying auth middleware so its matcher semantics
-    // stay single-sourced — it no-ops on public paths via `config.matcher`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (protectedAuth as any)(req, ...rest);
-  }
-  if (!isBuildPhase()) {
-    // TEMPORARY DIAGNOSTIC for the Vercel NO_SECRET investigation — logs
-    // presence only (never the value). REMOVE after confirming in Vercel
-    // Logs whether Edge sees the variable. Expected on a healthy deploy:
-    //   [env][edge] NEXTAUTH_SECRET present: true
-    // If Edge says false while Node (see lib/env.ts) says true, the Edge
-    // bundle is stale (rebuild without build cache) — not a code bug.
-    const edgeSecret = process.env.NEXTAUTH_SECRET;
-    console.log(
-      `[env][edge] NEXTAUTH_SECRET present: ${!!edgeSecret && edgeSecret.trim().length > 0}`
-    );
-    // Deliberately NON-blocking: see the header comment for why Edge must
-    // not throw on env. Enforcement happens in Node (lib/auth.ts).
-    if (!edgeSecret || edgeSecret.trim().length === 0) {
-      console.error(
-        "[env][edge] NEXTAUTH_SECRET is not set. Add it in Vercel's Environment Variables settings for this environment."
-      );
-    }
-    const edgeUrl = process.env.NEXTAUTH_URL;
-    if (!edgeUrl || edgeUrl.trim().length === 0) {
-      console.error(
-        "[env][edge] NEXTAUTH_URL is not set. Add it in Vercel's Environment Variables settings for this environment."
-      );
-    }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (protectedAuth as any)(req, ...rest);

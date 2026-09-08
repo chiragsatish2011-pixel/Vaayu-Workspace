@@ -50,6 +50,8 @@ export async function GET() {
         userId: projects.userId,
         userEmail: users.email,
         userRole: users.role,
+        userDisplayName: users.displayName,
+        userAvatarDriveId: users.avatarDriveId,
       })
       .from(projects)
       .innerJoin(users, eq(projects.userId, users.id))
@@ -217,6 +219,8 @@ export async function POST(req: NextRequest) {
           updatedAt: inserted.updatedAt.toISOString(),
           userEmail: user.email,
           userRole: user.role,
+          userDisplayName: user.displayName ?? null,
+          userAvatarDriveId: user.avatarDriveId ?? null,
         },
       },
       { status: 201 }

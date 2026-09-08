@@ -88,7 +88,7 @@ async function readFirstRow(
   const values = await sheetsGetValues(
     accessToken,
     spreadsheetId,
-    `${CHECKPOINTS_TAB}!A1:H1`
+    `${CHECKPOINTS_TAB}!A1:I1`
   );
   return values[0] ?? [];
 }

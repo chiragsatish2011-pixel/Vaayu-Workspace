@@ -48,13 +48,6 @@ export function requireDatabaseUrl(): string {
 
 export function requireNextAuthSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET;
-  // TEMPORARY DIAGNOSTIC for the Vercel NO_SECRET investigation — logs
-  // presence only (never the value). REMOVE after confirming in Vercel
-  // Function logs whether the Node runtime sees the variable. Expected:
-  //   [env][node] NEXTAUTH_SECRET present: true
-  console.log(
-    `[env][node] NEXTAUTH_SECRET present: ${!isMissing(secret)}`
-  );
   if (isMissing(secret)) {
     if (isBuildPhase()) {
       // Long placeholder — only to let `next build` collect routes.
@@ -70,13 +63,6 @@ export function requireNextAuthSecret(): string {
 
 export function requireNextAuthUrl(): string {
   const url = process.env.NEXTAUTH_URL;
-  // TEMPORARY BUILD DIAGNOSTIC for the malformed-NEXTAUTH_URL prerender
-  // failure (`Invalid URL` at app/providers.tsx:3). A URL is not a secret,
-  // so printing the raw value is safe. REMOVE once the dashboard value is
-  // corrected and the build is green.
-  console.log(
-    `[env][build-debug] NEXTAUTH_URL raw value: ${JSON.stringify(url ?? null)}`
-  );
   if (isMissing(url)) {
     if (isBuildPhase()) {
       return "http://localhost:3000";

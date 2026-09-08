@@ -130,6 +130,10 @@ const EMBEDDED_BOOTSTRAP = [
 	"email" text NOT NULL,
 	"password_hash" text NOT NULL,
 	"role" "role" DEFAULT 'member' NOT NULL,
+	"display_name" text,
+	"avatar_drive_id" text,
+	"avatar_file_name" text,
+	"has_completed_onboarding" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );`,
@@ -188,7 +192,25 @@ export async function runBootstrap(
     url,
     "SELECT to_regclass('public.users') AS tbl"
   );
-  if (tbl?.[0]?.tbl) return { applied: false, already: true };
+  if (tbl?.[0]?.tbl) {
+    // Table already exists — ensure new profile/onboarding columns exist
+    // (added after initial launch). IF NOT EXISTS makes this safe to re-run.
+    const db = clientFor(url);
+    const alters = [
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" text`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_drive_id" text`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_file_name" text`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "has_completed_onboarding" boolean DEFAULT false NOT NULL`,
+    ];
+    for (const stmt of alters) {
+      try {
+        await db.execute(sql.raw(stmt));
+      } catch {
+        /* ignore — column may already exist or permission issue will surface elsewhere */
+      }
+    }
+    return { applied: false, already: true };
+  }
 
   const db = clientFor(url);
   for (const stmt of await loadBootstrapStatements()) {

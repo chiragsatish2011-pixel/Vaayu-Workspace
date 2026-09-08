@@ -22,6 +22,8 @@ export default async function CheckpointsPage() {
     userId: string;
     userEmail: string;
     userRole: "admin" | "member";
+    displayName: string | null;
+    avatarDriveId?: string | null;
   }> = [];
   let notice: string | null = null;
 
@@ -39,7 +41,15 @@ export default async function CheckpointsPage() {
   }
 
   return (
-    <AppShell user={{ email: user.email, role: user.role }} active="/checkpoints">
+    <AppShell
+      user={{
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarDriveId: user.avatarDriveId,
+      }}
+      active="/checkpoints"
+    >
       <section className="mx-auto max-w-4xl pt-10 sm:pt-14">
         <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">
           Team Timeline

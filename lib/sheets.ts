@@ -105,7 +105,7 @@ export async function sheetsAppendRow(
     accessToken,
     "append row",
     `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(
-      `${tab}!A:H`
+      `${tab}!A:I`
     )}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values: [row] }) }
   );
@@ -243,7 +243,7 @@ export async function sheetsWriteHeaderRow(
   await sheetsUpdateRow(
     accessToken,
     spreadsheetId,
-    `${tabTitle}!A1:H1`,
+    `${tabTitle}!A1:I1`,
     header
   );
 }

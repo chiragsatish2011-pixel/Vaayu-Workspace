@@ -1,4 +1,5 @@
 import {
+  boolean,
   pgEnum,
   pgTable,
   text,
@@ -13,10 +14,12 @@ export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
   // bcrypt hash of the user's password. NEVER store plaintext.
-  // Only admins set passwords (admin panel); users have no self-service
-  // password UI at all.
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull().default("member"),
+  displayName: text("display_name"),
+  avatarDriveId: text("avatar_drive_id"),
+  avatarFileName: text("avatar_file_name"),
+  hasCompletedOnboarding: boolean("has_completed_onboarding").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

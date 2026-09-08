@@ -23,6 +23,19 @@ export const CHECKPOINTS_HEADER = [
   "user_id",
   "user_email",
   "user_role",
+  "display_name",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+] as const;
+
+// Old 8-col header (pre-displayName) — still accepted for backwards compat
+export const CHECKPOINTS_HEADER_LEGACY = [
+  "id",
+  "note",
+  "user_id",
+  "user_email",
+  "user_role",
   "created_at",
   "updated_at",
   "deleted_at",
@@ -34,6 +47,7 @@ export interface CheckpointRecord {
   userId: string;
   userEmail: string;
   userRole: "admin" | "member";
+  displayName: string | null;
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
   deletedAt: string | null; // ISO timestamp or null
@@ -43,12 +57,16 @@ export interface CheckpointActor {
   id: string;
   email: string;
   role: "admin" | "member";
+  displayName?: string | null;
 }
 
-/** The sheet's first row must be exactly this header — else fail loudly. */
+/** The sheet's first row must be exactly the current or legacy header — else fail loudly. */
 export function headerMatches(firstRow: string[] | undefined): boolean {
-  if (!firstRow || firstRow.length < CHECKPOINTS_HEADER.length) return false;
-  return CHECKPOINTS_HEADER.every((col, i) => firstRow[i] === col);
+  if (!firstRow) return false;
+  const isCurrent = CHECKPOINTS_HEADER.every((col, i) => firstRow[i] === col);
+  if (isCurrent) return true;
+  const isLegacy = CHECKPOINTS_HEADER_LEGACY.every((col, i) => firstRow[i] === col);
+  return isLegacy;
 }
 
 /**
@@ -56,10 +74,27 @@ export function headerMatches(firstRow: string[] | undefined): boolean {
  * (missing id) so callers skip them instead of surfacing corrupt data.
  */
 export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
+  const rawLen = row.length;
   const cells = [...row];
   while (cells.length < CHECKPOINTS_HEADER.length) cells.push("");
-  const [id, note, userId, userEmail, rawRole, createdAt, updatedAt, rawDeleted] =
-    cells.map((c) => (c ?? "").trim());
+  if (rawLen === 8) {
+    // Legacy 8-col row (no display_name)
+    const [id, note, userId, userEmail, rawRole, createdAt, updatedAt, rawDeleted] = cells.map((c) => (c ?? "").trim());
+    if (!id) return null;
+    return {
+      id,
+      note,
+      userId,
+      userEmail,
+      userRole: rawRole === "admin" ? "admin" : "member",
+      displayName: null,
+      createdAt,
+      updatedAt,
+      deletedAt: rawDeleted ? rawDeleted : null,
+    };
+  }
+  const [id, note, userId, userEmail, rawRole, displayName, createdAt, updatedAt, rawDeleted] = cells
+    .map((c) => (c ?? "").trim());
   if (!id) return null;
   return {
     id,
@@ -67,6 +102,7 @@ export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
     userId,
     userEmail,
     userRole: rawRole === "admin" ? "admin" : "member",
+    displayName: displayName || null,
     createdAt,
     updatedAt,
     deletedAt: rawDeleted ? rawDeleted : null,
@@ -81,6 +117,7 @@ export function toSheetRow(record: CheckpointRecord): string[] {
     record.userId,
     record.userEmail,
     record.userRole,
+    record.displayName ?? "",
     record.createdAt,
     record.updatedAt,
     record.deletedAt ?? "",

@@ -1,12 +1,16 @@
 import { Badge } from "@/components/Badge";
 import { MobileNav, NavLinks } from "@/components/MobileNav";
+import { OnboardingFlow } from "@/components/OnboardingFlow";
 import { SearchIcon } from "@/components/icons";
 import { SignOutButton } from "@/components/SignOutButton";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Wordmark } from "@/components/Wordmark";
 
 export interface ShellUser {
   email: string;
   role: "admin" | "member";
+  displayName?: string | null;
+  avatarDriveId?: string | null;
 }
 
 /**
@@ -22,9 +26,15 @@ export function AppShell({
   active?: string;
   children: React.ReactNode;
 }) {
-  const initial = (user.email?.[0] ?? "?").toUpperCase();
+  const primary = (user.displayName && user.displayName.trim()) || user.email;
+  const secondary = user.email;
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
+      <OnboardingFlow
+        initialDisplayName={user.displayName}
+        initialRole={user.role}
+        email={user.email}
+      />
       {/* ── Sidebar (desktop) ── */}
       <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-hairline-soft bg-canvas lg:flex">
         <div className="px-5 pb-2 pt-5">
@@ -38,12 +48,13 @@ export function AppShell({
         </nav>
         <div className="border-t border-hairline-soft p-4">
           <div className="mb-3 flex items-center gap-3 rounded-xl bg-fog px-3 py-2.5">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white">
-              {initial}
-            </span>
+            <UserAvatar displayName={user.displayName} email={user.email} avatarDriveId={user.avatarDriveId} size={36} />
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-[13px] font-medium">
-                {user.email}
+              <span className="block truncate text-[13px] font-semibold">
+                {primary}
+              </span>
+              <span className="block truncate font-mono text-[11px] text-steel">
+                {secondary}
               </span>
               <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-steel">
                 {user.role}
@@ -80,11 +91,8 @@ export function AppShell({
                 <span className="h-1.5 w-1.5 rounded-full bg-success-text" />
                 Phase 1
               </Badge>
-              <span
-                title={`${user.email} · ${user.role}`}
-                className="grid h-9 w-9 place-items-center rounded-full bg-ink font-display text-sm font-bold text-white"
-              >
-                {initial}
+              <span title={`${primary} · ${user.role}`}>
+                <UserAvatar displayName={user.displayName} email={user.email} avatarDriveId={user.avatarDriveId} size={36} />
               </span>
             </div>
           </div>

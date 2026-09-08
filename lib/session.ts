@@ -20,6 +20,9 @@ export interface ActiveUser {
   id: string;
   email: string;
   role: "admin" | "member";
+  displayName?: string | null;
+  avatarDriveId?: string | null;
+  hasCompletedOnboarding?: boolean;
 }
 
 /**
@@ -58,6 +61,9 @@ export async function requireActiveSession(): Promise<ActiveUser> {
           id: users.id,
           email: users.email,
           role: users.role,
+          displayName: users.displayName,
+          avatarDriveId: users.avatarDriveId,
+          hasCompletedOnboarding: users.hasCompletedOnboarding,
         })
         .from(users)
         .where(eq(users.id, session.user.id))
@@ -71,7 +77,14 @@ export async function requireActiveSession(): Promise<ActiveUser> {
 
   const user = rows[0];
   if (!user) redirect("/signin");
-  return { id: user.id, email: user.email, role: user.role };
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    displayName: user.displayName ?? null,
+    avatarDriveId: user.avatarDriveId ?? null,
+    hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+  };
 }
 
 export async function requireAdmin(): Promise<ActiveUser> {
@@ -91,13 +104,27 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
   if (!session?.user?.id) return null;
   try {
     const rows = await db
-      .select({ id: users.id, email: users.email, role: users.role })
+      .select({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        displayName: users.displayName,
+        avatarDriveId: users.avatarDriveId,
+        hasCompletedOnboarding: users.hasCompletedOnboarding,
+      })
       .from(users)
       .where(eq(users.id, session.user.id))
       .limit(1);
     const user = rows[0];
     if (!user) return null;
-    return { id: user.id, email: user.email, role: user.role };
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      displayName: user.displayName ?? null,
+      avatarDriveId: user.avatarDriveId ?? null,
+      hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+    };
   } catch (err) {
     console.error("[session] api guard DB error:", err);
     return null;

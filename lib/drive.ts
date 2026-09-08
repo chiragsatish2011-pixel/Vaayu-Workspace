@@ -950,3 +950,82 @@ export async function deleteDriveFile(
     throw driveError("delete", res.status, body);
   }
 }
+
+/**
+ * Move a file or folder to Drive trash (recoverable via the Drive UI's
+ * Trash — NOT a permanent delete). Used by the team Files browser; the
+ * Projects flow keeps using permanent `deleteDriveFile` for published
+ * bundles, so the two features never swap semantics.
+ */
+export async function trashDriveFile(
+  accessToken: string,
+  fileId: string
+): Promise<void> {
+  if (!isValidDriveFileId(fileId)) {
+    throw new DriveValidationError("[drive] Invalid file ID.");
+  }
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ trashed: true }),
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw driveError("trash", res.status, body);
+  }
+  invalidateDriveBrowseCache();
+}
+
+/** Drop all cached folder listings (ids may have been trashed/uploaded). */
+export function invalidateDriveBrowseCache(): void {
+  browseCache.clear();
+}
+
+/**
+ * Confirm a file/folder lives strictly inside a root folder by walking
+ * the `parents` chain upward (Drive files have a single parent here —
+ * everything is created with parents=[oneId]). Fail-closed: any lookup
+ * failure, missing parents, or hop-limit exhaustion returns false.
+ * Used before destructive actions so an id from outside the team space
+ * can never be trashed through the app.
+ */
+export async function isDescendantOfFolder(
+  accessToken: string,
+  fileId: string,
+  rootFolderId: string,
+  maxHops = 25
+): Promise<boolean> {
+  if (!isValidDriveFileId(fileId) || !isValidDriveFileId(rootFolderId)) {
+    return false;
+  }
+  let current: string | null = fileId;
+  for (let hop = 0; hop < maxHops && current; hop++) {
+    if (current === rootFolderId) return true;
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(current)}?fields=id,parents,trashed`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      }
+    );
+    const data = (await res.json().catch(() => null)) as {
+      parents?: unknown;
+      trashed?: unknown;
+    } | null;
+    if (!res.ok || !data || data.trashed) return false;
+    const parents = Array.isArray(data.parents)
+      ? data.parents.filter((p): p is string => typeof p === "string")
+      : [];
+    // A parent inside the locked root is sufficient (single-parent trees).
+    if (parents.includes(rootFolderId)) return true;
+    current = parents[0] ?? null;
+  }
+  return current === rootFolderId;
+}

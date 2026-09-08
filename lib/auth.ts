@@ -74,6 +74,9 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             email: user.email,
             role: user.role,
+            displayName: user.displayName ?? null,
+            avatarDriveId: user.avatarDriveId ?? null,
+            hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
           };
         } catch (err) {
           // Infrastructure failure (DB/env down) — NOT bad credentials.
@@ -92,6 +95,9 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.displayName = (user as { displayName?: string | null }).displayName ?? null;
+        token.avatarDriveId = (user as { avatarDriveId?: string | null }).avatarDriveId ?? null;
+        token.hasCompletedOnboarding = Boolean((user as { hasCompletedOnboarding?: boolean }).hasCompletedOnboarding);
       }
       return token;
     },
@@ -99,6 +105,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = (token.id as string) ?? token.sub ?? "";
         session.user.role = (token.role as "admin" | "member") ?? "member";
+        session.user.displayName = (token.displayName as string | null) ?? null;
+        session.user.avatarDriveId = (token.avatarDriveId as string | null) ?? null;
+        session.user.hasCompletedOnboarding = Boolean(token.hasCompletedOnboarding);
       }
       return session;
     },

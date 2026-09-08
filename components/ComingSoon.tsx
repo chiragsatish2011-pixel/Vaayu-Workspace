@@ -16,7 +16,12 @@ export async function ComingSoon({ section }: { section: SectionKey }) {
 
   return (
     <AppShell
-      user={{ email: user.email, role: user.role }}
+      user={{
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarDriveId: user.avatarDriveId,
+      }}
       active={s.href}
     >
       {/* Identity band */}

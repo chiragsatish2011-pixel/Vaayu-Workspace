@@ -43,7 +43,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      user={{ email: user.email, role: user.role }}
+      user={{ email: user.email, role: user.role, displayName: user.displayName, avatarDriveId: user.avatarDriveId }}
       active="/"
     >
       {/* ── Hero ── */}
@@ -68,9 +68,9 @@ export default async function DashboardPage() {
           >
             Signed in as{" "}
             <span className="font-semibold text-ink">
-              {user.email}
+              {(user.displayName && user.displayName.trim()) || user.email}
             </span>{" "}
-            ·{" "}
+            <span className="font-mono text-sm text-steel">({user.email})</span> ·{" "}
             <Badge tone="live" className="align-middle">
               {user.role}
             </Badge>{" "}

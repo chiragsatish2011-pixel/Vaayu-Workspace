@@ -26,6 +26,7 @@ import {
   type FileProgress,
 } from "@/components/UploadManager";
 import { FileBrowser } from "@/components/FileBrowser";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export interface ProjectItem {
   id: string;
@@ -41,6 +42,8 @@ export interface ProjectItem {
   userId: string;
   userEmail: string;
   userRole: "admin" | "member";
+  userDisplayName?: string | null;
+  userAvatarDriveId?: string | null;
 }
 
 interface ProjectsManagerProps {
@@ -49,6 +52,7 @@ interface ProjectsManagerProps {
     id: string;
     email: string;
     role: "admin" | "member";
+    displayName?: string | null;
   };
 }
 
@@ -137,10 +141,8 @@ export function ProjectsManager({
   }, [projects.length]);
 
   // ── Upload tuning (research-backed) ──────────────────────────────
-  /** Controlled parallelism: 3 concurrent file uploads (Drive rate limit safe). */
+  /** Controlled parallelism: 3 concurrent file uploads (Drive rate limit safe). Chunk size is 8MB (UploadManager.tsx:CHUNK_BYTES, 32×256KB). */
   const UPLOAD_CONCURRENCY = 3;
-  /** Resumable chunk size: 8MB (must be multiple of 256KB, per Drive spec). */
-  const RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024;
 
   const handleRecoverOrphan = async (driveFile: {
     id: string;
@@ -960,14 +962,20 @@ export function ProjectsManager({
                     </p>
                   )}
 
-                  {/* Author meta */}
+                  {/* Author meta — displayName primary, email secondary, deterministic color */}
                   <div className="flex items-center justify-between text-xs text-stone pt-1">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-display text-[10px] font-bold text-white">
-                        {(p.userEmail[0] ?? "?").toUpperCase()}
-                      </span>
-                      <span className="truncate text-steel font-medium text-[11px]">
-                        {p.userEmail}
+                      <UserAvatar
+                        displayName={p.userDisplayName}
+                        email={p.userEmail}
+                        avatarDriveId={p.userAvatarDriveId}
+                        size={20}
+                      />
+                      <span className="min-w-0 flex flex-col leading-tight">
+                        <span className="truncate font-semibold text-ink text-[11px]">
+                          {(p.userDisplayName && p.userDisplayName.trim()) || p.userEmail}
+                        </span>
+                        <span className="truncate font-mono text-[10px] text-steel">{p.userEmail}</span>
                       </span>
                     </div>
                     <span className="font-mono text-[10px] uppercase tracking-wider shrink-0 text-stone">

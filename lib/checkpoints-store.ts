@@ -51,6 +51,7 @@ export interface CheckpointView {
   userId: string;
   userEmail: string;
   userRole: "admin" | "member";
+  displayName: string | null;
 }
 
 export class CheckpointNotFoundError extends Error {
@@ -90,6 +91,7 @@ function toView(record: CheckpointRecord): CheckpointView {
     userId: record.userId,
     userEmail: record.userEmail,
     userRole: record.userRole,
+    displayName: record.displayName ?? null,
   };
 }
 
@@ -100,11 +102,6 @@ async function readSheet(): Promise<{
 }> {
   const spreadsheetId = requireCheckpointsSpreadsheetId();
   const now = Date.now();
-  // TEMP-DEBUG (live 404 investigation — remove after): prove exactly which
-  // ID the READ path uses at runtime in production (Vercel Function logs).
-  console.log(
-    `[checkpoints-debug] READ id=${JSON.stringify(spreadsheetId)} length=${spreadsheetId.length}`
-  );
   if (
     cache &&
     cache.spreadsheetId === spreadsheetId &&
@@ -119,7 +116,7 @@ async function readSheet(): Promise<{
     values = await sheetsGetValues(
       token,
       spreadsheetId,
-      `${CHECKPOINTS_TAB}!A1:H`
+      `${CHECKPOINTS_TAB}!A1:I`
     );
   } catch (err) {
     // A missing tab surfaces from the API as a 400 range error — translate
@@ -204,12 +201,6 @@ export async function createCheckpoint(
 
   const spreadsheetId = requireCheckpointsSpreadsheetId();
   const token = await getSheetsAccessToken();
-  // TEMP-DEBUG (live 404 investigation — remove after): prove exactly which
-  // ID the APPEND path uses at runtime (compare with the READ log above —
-  // they must be identical strings or the paths have diverged again).
-  console.log(
-    `[checkpoints-debug] APPEND id=${JSON.stringify(spreadsheetId)} length=${spreadsheetId.length}`
-  );
   const now = nowIso();
   const record: CheckpointRecord = {
     id: randomUUID(),
@@ -217,6 +208,7 @@ export async function createCheckpoint(
     userId: actor.id,
     userEmail: actor.email,
     userRole: actor.role,
+    displayName: actor.displayName ?? null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -249,7 +241,7 @@ export async function updateCheckpoint(
   await sheetsUpdateRow(
     token,
     spreadsheetId,
-    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:H${hit.rowNumber}`,
+    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:I${hit.rowNumber}`,
     toSheetRow(hit.record)
   );
   invalidateCache(spreadsheetId);
@@ -273,7 +265,7 @@ export async function deleteCheckpoint(
   await sheetsUpdateRow(
     token,
     spreadsheetId,
-    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:H${hit.rowNumber}`,
+    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:I${hit.rowNumber}`,
     toSheetRow(hit.record)
   );
   invalidateCache(spreadsheetId);
