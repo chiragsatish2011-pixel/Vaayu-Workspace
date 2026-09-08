@@ -318,19 +318,17 @@ export function CheckpointsList({
                     <UserAvatar displayName={item.displayName} email={item.userEmail} userId={item.userId} avatarDriveId={item.avatarDriveId} size={40} />
                   </span>
 
-                  {/* Content card */}
-                  <div className="flex-1 rounded-xl border border-hairline bg-fog/50 p-4 transition-colors hover:bg-fog">
+                  {/* Content card — min-w-0 prevents flex overflow truncation like “Chira” */}
+                  <div className="min-w-0 flex-1 rounded-xl border border-hairline bg-fog/50 p-4 transition-colors hover:bg-fog">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline-soft/60 pb-2">
-                      <div className="flex min-w-0 flex-col leading-tight">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate font-display text-[15px] font-bold tracking-tight text-ink">
+                      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                          <span className="break-words font-display text-[15px] font-bold tracking-tight text-ink">
                             {primary}
                           </span>
-                          <Badge tone={item.userRole === "admin" ? "phase" : "live"}>
-                            {item.userRole}
-                          </Badge>
+                          <Badge tone={item.userRole === "admin" ? "phase" : "live"}>{item.userRole}</Badge>
                         </div>
-                        <span className="truncate font-mono text-xs text-steel">{secondary}</span>
+                        <span className="break-all font-mono text-xs text-steel">{secondary}</span>
                       </div>
                       <time className="font-mono text-[11px] uppercase tracking-[0.14em] text-stone">
                         {formatDate(item.createdAt)}
