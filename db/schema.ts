@@ -86,8 +86,45 @@ export const calls = pgTable("calls", {
 export type Call = typeof calls.$inferSelect;
 export type NewCall = typeof calls.$inferInsert;
 
+export const conversationTypeEnum = pgEnum("conversation_type", ["direct", "group"]);
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: conversationTypeEnum("type").notNull(),
+  // Group display name. NULL for direct conversations (name is derived
+  // from the other participant at read time).
+  name: text("name"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export const conversationParticipants = pgTable("conversation_participants", {
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  // Watermark for unread badges. NULL = never read.
+  lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+});
+
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+export type NewConversationParticipant = typeof conversationParticipants.$inferInsert;
+
 export const chatMessages = pgTable("chat_messages", {
   id: uuid("id").defaultRandom().primaryKey(),
+  // Scopes every message to exactly one conversation. NULL only for
+  // pre-conversation legacy rows from the old single global room — those
+  // rows are never served by the new access-controlled routes.
+  conversationId: uuid("conversation_id").references(() => conversations.id, {
+    onDelete: "cascade",
+  }),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

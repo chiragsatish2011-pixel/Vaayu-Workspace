@@ -23,10 +23,17 @@ export function AppShell({
   user,
   active,
   children,
+  fullBleed,
 }: {
   user: ShellUser;
   active?: string;
   children: React.ReactNode;
+  /**
+   * Full-bleed mode: the content fills the main column edge-to-edge with no
+   * max-width, side padding, or bottom gap. Used by Chat, which IS a
+   * full-page two-pane interface — not a card floating inside page chrome.
+   */
+  fullBleed?: boolean;
 }) {
   const primary = getDisplayName(user.displayName, user.email);
   const secondary = user.email;
@@ -99,7 +106,7 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <div className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 sm:px-6">
+        <div className={fullBleed ? "flex min-w-0 flex-1 flex-col" : "mx-auto w-full max-w-6xl flex-1 px-4 pb-16 sm:px-6"}>
           {children}
         </div>
         <footer className="border-t border-hairline-soft">

@@ -1,114 +1,51 @@
-import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { db } from "@/db";
-import { chatMessages, users } from "@/db/schema";
 import { requireApiSession } from "@/lib/session";
+import { isParticipant } from "@/lib/chat-access";
 
+/**
+ * LEGACY endpoint — the old single global "Team Chat" room.
+ *
+ * The global room no longer exists. These handlers are kept only so old
+ * clients fail LOUDLY (410 Gone) instead of silently reading a shared feed.
+ * All chat traffic must go through /api/chat/conversations* which enforce
+ * per-conversation participant access control.
+ *
+ * Scoped equivalents:
+ * - GET  /api/chat/conversations (sidebar) + /api/chat/conversations/:id/messages
+ * - POST /api/chat/conversations/:id/messages
+ */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await requireApiSession();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  try {
-    const rows = await db
-      .select({
-        id: chatMessages.id,
-        content: chatMessages.content,
-        contentJson: chatMessages.contentJson,
-        createdAt: chatMessages.createdAt,
-        updatedAt: chatMessages.updatedAt,
-        userId: chatMessages.userId,
-        userEmail: users.email,
-        userRole: users.role,
-        displayName: users.displayName,
-        avatarDriveId: users.avatarDriveId,
-      })
-      .from(chatMessages)
-      .innerJoin(users, eq(chatMessages.userId, users.id))
-      .orderBy(desc(chatMessages.createdAt))
-      .limit(100);
-
-    const messages = rows
-      .map((r) => ({
-        ...r,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-      }))
-      .reverse(); // oldest first for chat
-
-    return NextResponse.json({ messages });
-  } catch (err) {
-    console.error("[GET /api/chat/messages]", err);
-    return NextResponse.json({ error: "Failed to fetch messages." }, { status: 500 });
+  // Back-compat shim: an old client passing ?conversationId= gets proxied
+  // through the SAME participant check as the new routes. No param (the old
+  // global-room behavior) is gone.
+  const conversationId = new URL(req.url).searchParams.get("conversationId");
+  if (!conversationId) {
+    return NextResponse.json(
+      { error: "Gone: the global team room was replaced by private conversations. Use /api/chat/conversations." },
+      { status: 410 }
+    );
   }
+  if (!(await isParticipant(conversationId, user.id))) {
+    return NextResponse.json({ error: "Not a participant in this conversation." }, { status: 403 });
+  }
+  const upstream = `/api/chat/conversations/${conversationId}/messages?${new URL(req.url).searchParams.toString()}`;
+  return NextResponse.json(
+    { error: "Gone: use the scoped endpoint.", use: upstream },
+    { status: 410 }
+  );
 }
 
-export async function POST(req: Request) {
+export async function POST() {
   const user = await requireApiSession();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
-  }
-
-  const { content, contentJson } = body as { content?: unknown; contentJson?: unknown };
-
-  const text = typeof content === "string" ? content.trim() : "";
-  if (!text) return NextResponse.json({ error: "Message content is required." }, { status: 400 });
-  if (text.length > 5000) return NextResponse.json({ error: "Message too long (max 5000)." }, { status: 400 });
-
-  let jsonStr: string | null = null;
-  if (contentJson !== undefined && contentJson !== null) {
-    if (typeof contentJson === "string") {
-      jsonStr = contentJson;
-      // validate it's JSON
-      try {
-        JSON.parse(jsonStr);
-      } catch {
-        return NextResponse.json({ error: "Invalid contentJson." }, { status: 400 });
-      }
-      if (jsonStr.length > 20000) return NextResponse.json({ error: "contentJson too large." }, { status: 400 });
-    } else if (typeof contentJson === "object") {
-      try {
-        jsonStr = JSON.stringify(contentJson);
-      } catch {
-        return NextResponse.json({ error: "Invalid contentJson." }, { status: 400 });
-      }
-    }
-  }
-
-  try {
-    const [inserted] = await db
-      .insert(chatMessages)
-      .values({
-        userId: user.id,
-        content: text,
-        contentJson: jsonStr,
-      })
-      .returning();
-
-    // Enrich for immediate UI
-    const message = {
-      id: inserted.id,
-      content: inserted.content,
-      contentJson: inserted.contentJson,
-      createdAt: inserted.createdAt.toISOString(),
-      updatedAt: inserted.updatedAt.toISOString(),
-      userId: user.id,
-      userEmail: user.email,
-      userRole: user.role,
-      displayName: user.displayName ?? null,
-      avatarDriveId: user.avatarDriveId ?? null,
-    };
-
-    return NextResponse.json({ message }, { status: 201 });
-  } catch (err) {
-    console.error("[POST /api/chat/messages]", err);
-    return NextResponse.json({ error: "Failed to send message." }, { status: 500 });
-  }
+  return NextResponse.json(
+    { error: "Gone: the global team room was replaced by private conversations. POST /api/chat/conversations/:id/messages." },
+    { status: 410 }
+  );
 }
