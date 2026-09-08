@@ -9,8 +9,7 @@ import path from "node:path";
  *  3. 100% identical to the original file (read directly from public/tag-along.html)
  *
  * The file at public/tag-along.html is the single source of truth.
- * public/tag-along/index.html exists for clean-url static fallback (/tag-along/index.html).
- * This handler just streams that same file at /tag-along.
+ * This handler streams that same file at /tag-along.
  */
 export const dynamic = "force-static";
 
