@@ -60,6 +60,8 @@ interface DirectoryUser {
 
 interface ChatManagerProps {
   currentUser: { id: string; email: string; displayName?: string | null };
+  /** Deep link: preselect this conversation once the list loads (?c=). */
+  initialConversationId?: string | null;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -104,9 +106,10 @@ function sortByActivity(list: Convo[]): Convo[] {
 
 /* ── Component ──────────────────────────────────────────────────────── */
 
-export function ChatManager({ currentUser }: ChatManagerProps) {
+export function ChatManager({ currentUser, initialConversationId }: ChatManagerProps) {
   const router = useRouter();
   const selfId = currentUser.id;
+  const deepLinkRef = useRef<string | null>(initialConversationId ?? null);
 
   const [convos, setConvos] = useState<Convo[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -208,6 +211,14 @@ export function ChatManager({ currentUser }: ChatManagerProps) {
     },
     [loadThread, markRead]
   );
+
+  // Deep link (?c=): preselect once the list arrives, then forget it.
+  useEffect(() => {
+    const id = deepLinkRef.current;
+    if (!id || loadingList || selectedIdRef.current) return;
+    deepLinkRef.current = null;
+    if (convos.some((c) => c.id === id)) selectConversation(id);
+  }, [convos, loadingList, selectConversation]);
 
   /* ── Real-time push: ONE EventSource, zero polling ── */
 

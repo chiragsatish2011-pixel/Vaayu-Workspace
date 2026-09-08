@@ -1,7 +1,7 @@
 import { Badge } from "@/components/Badge";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { MobileNav, NavLinks } from "@/components/MobileNav";
 import { OnboardingFlow } from "@/components/OnboardingFlow";
-import { SearchIcon } from "@/components/icons";
 import { SignOutButton } from "@/components/SignOutButton";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
@@ -82,18 +82,9 @@ export function AppShell({
             <div className="lg:hidden">
               <Wordmark compact />
             </div>
-            {/* Search pill (decorative until Phase 2) */}
-            <div className="ml-auto hidden min-w-0 flex-1 max-w-xs items-center gap-2 rounded-lg border border-hairline bg-fog px-3 text-steel sm:flex">
-              <SearchIcon className="h-4 w-4 shrink-0" />
-              <input
-                disabled
-                placeholder="Search lands in Phase 2"
-                title="Global search arrives with Files in Phase 2"
-                className="h-9 w-full cursor-not-allowed bg-transparent text-sm outline-none placeholder:text-stone"
-              />
-              <kbd className="hidden shrink-0 rounded border border-hairline bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-stone md:block">
-                /
-              </kbd>
+            {/* Global search — chats, people, projects, files */}
+            <div className="ml-auto hidden min-w-0 flex-1 max-w-xs sm:flex">
+              <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2 sm:ml-0">
               <Badge tone="live">
