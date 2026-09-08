@@ -56,8 +56,8 @@ export const SECTIONS: Section[] = [
     tagline: "Every team file, one browser.",
     blurb:
       "Browse, upload and manage the shared drive from inside your workspace.",
-    phase: "Phase 2 · Drive integration",
-    badge: { text: "Phase 2", tone: "beta" },
+    phase: "Phase 2 · Live browser",
+    badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#1456f0] via-[#2f6bf3] to-[#3daeff]",
     accent: "#1456f0",

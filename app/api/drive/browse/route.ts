@@ -12,10 +12,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/drive/browse?id=<driveFileOrFolderId>
+ * GET /api/drive/browse?id=<driveFileOrFolderId>[&fresh=1]
  * Returns file browser data for a project. For a folder project (whole
  * uploaded tree), recursively lists all files/folders preserving relativePath.
  * For a single file, returns just that file's metadata.
+ *
+ * `fresh=1` bypasses the 30s server listing cache (still refreshes it) —
+ * used after the client changed something (upload landed, trash completed)
+ * so the next paint shows truth, not a stale snapshot. Default opens stay
+ * cached and fast.
  *
  * Uses Drive's thumbnailLink/iconLink for fast previews (no extra fetch)
  * and paginates server-side (pageSize 1000 + nextPageToken loop) so even
@@ -39,6 +44,7 @@ export async function GET(req: NextRequest) {
   if (!isValidDriveFileId(id)) {
     return NextResponse.json({ error: "A valid Drive file/folder id is required." }, { status: 400 });
   }
+  const fresh = new URL(req.url).searchParams.get("fresh") === "1";
 
   try {
     const accessToken = await getDriveAccessToken(
@@ -108,7 +114,7 @@ export async function GET(req: NextRequest) {
 
     if (isFolder) {
       // Folder project — recursively list all descendants
-      const tree = await listDriveTree(accessToken, id);
+      const tree = await listDriveTree(accessToken, id, { fresh });
       // Calculate totals for client warning (e.g., 754MB across 27k files)
       let totalBytes = 0;
       let fileCount = 0;

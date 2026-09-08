@@ -200,7 +200,13 @@ export function FileBrowser({
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/drive/browse?id=${encodeURIComponent(projectDriveId)}`, { cache: "no-store" });
+      // refreshKey > 0 means "something changed elsewhere" (upload landed,
+      // trash completed) → fresh=1 bypasses the 30s server listing cache so
+      // the next paint shows truth. Plain opens stay cached and fast.
+      const url =
+        `/api/drive/browse?id=${encodeURIComponent(projectDriveId)}` +
+        (refreshKey > 0 ? "&fresh=1" : "");
+      const r = await fetch(url, { cache: "no-store" });
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error(j?.error || "Could not load folder.");
       setData(j as BrowseResponse);

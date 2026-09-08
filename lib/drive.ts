@@ -634,6 +634,8 @@ export async function uploadDriveFile(
   if (!res.ok || !data?.id) {
     throw driveError("upload", res.status, JSON.stringify(data));
   }
+  // Bytes landed server-side here (multipart path) — listings must refresh.
+  invalidateDriveBrowseCache();
   return data;
 }
 
@@ -831,11 +833,14 @@ const BROWSE_CACHE_TTL_MS = 30_000;
 /** List immediate children of a folder with preview-capable fields. Paginated server-side. */
 export async function listDriveFolderContents(
   accessToken: string,
-  folderId: string
+  folderId: string,
+  opts?: { fresh?: boolean }
 ): Promise<DriveBrowseFile[]> {
-  const cached = browseCache.get(folderId);
-  if (cached && Date.now() - cached.at < BROWSE_CACHE_TTL_MS) {
-    return cached.files;
+  if (!opts?.fresh) {
+    const cached = browseCache.get(folderId);
+    if (cached && Date.now() - cached.at < BROWSE_CACHE_TTL_MS) {
+      return cached.files;
+    }
   }
   const files: DriveBrowseFile[] = [];
   let pageToken: string | undefined = undefined;
@@ -870,7 +875,8 @@ export async function listDriveFolderContents(
 /** Recursively list all files under a project folder (BFS), preserving relative paths. */
 export async function listDriveTree(
   accessToken: string,
-  rootFolderId: string
+  rootFolderId: string,
+  opts?: { fresh?: boolean }
 ): Promise<{ file: DriveBrowseFile; relativePath: string }[]> {
   const result: { file: DriveBrowseFile; relativePath: string }[] = [];
   // BFS queue: {folderId, prefix}
@@ -880,7 +886,7 @@ export async function listDriveTree(
   const throttle = (ms: number) => new Promise((r) => setTimeout(r, ms));
   while (queue.length > 0) {
     const { id, prefix } = queue.shift()!;
-    const children = await listDriveFolderContents(accessToken, id);
+    const children = await listDriveFolderContents(accessToken, id, opts);
     for (const child of children) {
       const rel = prefix ? `${prefix}/${child.name}` : child.name;
       if (child.isFolder) {
