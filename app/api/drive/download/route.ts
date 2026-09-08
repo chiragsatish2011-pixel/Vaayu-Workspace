@@ -98,12 +98,14 @@ export async function GET(req: NextRequest) {
 
     const safeName = (meta.name ?? "download").replace(/["\r\n]/g, "");
     console.log(`[drive/download] (${safeName}) by (${user.email})`);
+    // ?inline=1 streams playable media (voice notes) instead of forcing save
+    const inline = new URL(req.url).searchParams.get("inline") === "1";
     return new NextResponse(upstream.body, {
       status: 200,
       headers: {
         "Content-Type": meta.mimeType ?? "application/octet-stream",
         ...(meta.size ? { "Content-Length": meta.size } : {}),
-        "Content-Disposition": `attachment; filename="${safeName}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${safeName}"`,
       },
     });
   } catch (err) {

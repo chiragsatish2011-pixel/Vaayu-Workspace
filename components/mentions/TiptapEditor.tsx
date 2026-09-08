@@ -1,13 +1,16 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { EditorContent, useEditor, ReactRenderer } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { MentionList, type SuggestionItem } from "./MentionList";
+import { AudioNote, audioNotePlaceholder } from "./audioNote";
+import { VoicePlayer } from "@/components/VoicePlayer";
+import { VoiceRecorder, type UploadedVoiceNote } from "@/components/VoiceRecorder";
 import { getUserColor } from "@/lib/userColor";
 import "tippy.js/dist/tippy.css";
 
@@ -20,6 +23,21 @@ interface TiptapEditorProps {
   autoFocus?: boolean;
   minHeight?: string;
   onEmptySubmit?: () => void;
+  /** Show the mic button for voice notes (default true). */
+  voiceNotes?: boolean;
+}
+
+/** Editor text plus 🎤 placeholders so voice-only content still sends + previews. */
+function textWithVoice(doc: any): string {
+  const parts: string[] = [];
+  const base = typeof doc?.textContent === "string" ? doc.textContent.trim() : "";
+  if (base) parts.push(base);
+  try {
+    doc?.descendants?.((n: any) => {
+      if (n?.type?.name === "audioNote") parts.push(audioNotePlaceholder(n.attrs));
+    });
+  } catch {}
+  return parts.join("\n");
 }
 
 // Simple debounce for search — inject @explore / @general channel shortcuts like screenshot when query matches
@@ -60,7 +78,7 @@ function debouncedSearch(query: string): Promise<SuggestionItem[]> {
   });
 }
 
-export function TiptapEditor({ placeholder = "Type a message… @ to mention", initialContentJson, initialText, onSubmit, onChange, autoFocus }: TiptapEditorProps) {
+export function TiptapEditor({ placeholder = "Type a message… @ to mention", initialContentJson, initialText, onSubmit, onChange, autoFocus, voiceNotes = true }: TiptapEditorProps) {
   // Parse initial JSON if provided
   const initialContent = (() => {
     if (initialContentJson) {
@@ -104,6 +122,7 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
         horizontalRule: false,
       }),
       Placeholder.configure({ placeholder }),
+      AudioNote,
       CustomMention.configure({
         HTMLAttributes: {
           class: "mention-chip",
@@ -200,7 +219,7 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
       handleKeyDown: (view, event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          const text = view.state.doc.textContent.trim();
+          const text = textWithVoice(view.state.doc);
           if (!text) return true;
           const json = (view.state as unknown as { toJSON: () => unknown }).toJSON();
           const handler = (view as unknown as { _onSubmit?: (c: { text: string; json: unknown }) => void })._onSubmit;
@@ -214,7 +233,7 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
       },
     },
     onUpdate: ({ editor }) => {
-      const text = editor.getText();
+      const text = textWithVoice(editor.state.doc);
       const json = editor.getJSON();
       onChange?.({ text, json });
       // Attach for handleKeyDown
@@ -227,6 +246,26 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
       if (autoFocus) editor.commands.focus();
     },
   });
+
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const insertVoiceNote = (note: UploadedVoiceNote) => {
+    if (!editor) return;
+    setVoiceError(null);
+    try {
+      const end = editor.state.doc.content.size;
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(end, [
+          { type: "audioNote", attrs: { driveId: note.driveId, label: note.name, durationSec: note.durationSec, mimeType: note.mimeType } },
+          { type: "paragraph" },
+        ])
+        .run();
+    } catch {
+      setVoiceError("Could not attach the voice note — try again.");
+    }
+  };
 
   // Keep onSubmit updated
   useEffect(() => {
@@ -259,7 +298,13 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
 
   return (
     <div className="w-full">
-      <EditorContent editor={editor} />
+      <div className="flex w-full items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <EditorContent editor={editor} />
+        </div>
+        {voiceNotes && <VoiceRecorder onUploaded={insertVoiceNote} onError={(m) => setVoiceError(m)} />}
+      </div>
+      {voiceError && <p className="mt-1.5 text-xs font-medium text-error">{voiceError}</p>}
       <style jsx global>{`
         .tiptap-editor p {
           margin: 0;
@@ -273,6 +318,18 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
           font-weight: 600;
           border: 1px solid;
           margin: 0 0.15rem;
+        }
+        .tiptap-editor .audio-note-chip {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 0.75rem;
+          padding: 0.35rem 0.65rem;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border: 1px solid #e5e7eb;
+          background: #f7f8fa;
+          color: #0a0a0a;
+          margin: 0.15rem 0;
         }
         .tiptap p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);
@@ -304,8 +361,10 @@ export function extractPlainTextFromTiptap(json: unknown): string {
   const doc = json as { type?: string; content?: unknown[] };
   if (!Array.isArray(doc.content)) return "";
   let out = "";
-  for (const node of doc.content as Array<{ type?: string; content?: Array<{ type?: string; text?: string; attrs?: { label?: string } }> }>) {
-    if (node.type === "paragraph" && Array.isArray(node.content)) {
+  for (const node of doc.content as Array<{ type?: string; attrs?: { label?: string; durationSec?: number }; content?: Array<{ type?: string; text?: string; attrs?: { label?: string } }> }>) {
+    if (node.type === "audioNote") {
+      out += audioNotePlaceholder(node.attrs) + "\n";
+    } else if (node.type === "paragraph" && Array.isArray(node.content)) {
       for (const child of node.content) {
         if (child.type === "text" && typeof child.text === "string") out += child.text;
         else if (child.type === "mention" && child.attrs?.label) out += `@${child.attrs.label}`;
@@ -321,7 +380,16 @@ export function renderTiptapJsonToReact(json: unknown, onMentionClick?: (type: s
   if (!json || typeof json !== "object") return null;
   const doc = json as { content?: unknown[] };
   if (!Array.isArray(doc.content)) return null;
-  return (doc.content as Array<{ type?: string; content?: Array<{ type: string; text?: string; attrs?: { id?: string; label?: string; type?: string; email?: string } }> }>).map((node, i) => {
+  return (doc.content as Array<{ type?: string; attrs?: { driveId?: string; label?: string; durationSec?: number }; content?: Array<{ type: string; text?: string; attrs?: { id?: string; label?: string; type?: string; email?: string } }> }>).map((node, i) => {
+    if (node.type === "audioNote") {
+      const a = node.attrs;
+      if (!a?.driveId) return null;
+      return (
+        <span key={i} className="my-1 block">
+          <VoicePlayer driveId={a.driveId} label={a.label} durationSec={typeof a.durationSec === "number" ? a.durationSec : null} />
+        </span>
+      );
+    }
     if (node.type !== "paragraph" || !Array.isArray(node.content)) return null;
     return (
       <span key={i}>

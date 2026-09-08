@@ -55,9 +55,9 @@ export async function POST(req: NextRequest) {
   const kind = form.get("kind");
   const file = form.get("file");
   const relativePathRaw = form.get("relativePath");
-  if (kind !== "codebase" && kind !== "preview") {
+  if (kind !== "codebase" && kind !== "preview" && kind !== "voice") {
     return NextResponse.json(
-      { error: 'Field "kind" must be "codebase" or "preview".' },
+      { error: 'Field "kind" must be "codebase", "preview" or "voice".' },
       { status: 400 }
     );
   }
