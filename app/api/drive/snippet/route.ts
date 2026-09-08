@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDriveAccessToken, getDriveFileSnippet, isValidDriveFileId } from "@/lib/drive";
+import { getDriveAccessToken, getDriveFileSnippet, isDescendantOfFolder, isValidDriveFileId } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireApiSession } from "@/lib/session";
 
@@ -124,9 +124,14 @@ export async function GET(req: NextRequest) {
     if (meta.trashed) {
       return NextResponse.json({ error: "File was deleted." }, { status: 404 });
     }
-    // Verify inside locked folder (allow direct child or any descendant — project IDs are already verified)
-    // For snippet we just check the file exists and is not trashed; the browse endpoint already
-    // ensures project-level access.
+    if (id !== drive.folderId) {
+      const inside = await isDescendantOfFolder(accessToken, id, drive.folderId);
+      if (!inside) {
+        return NextResponse.json({ error: "File is not inside the team folder." }, { status: 403 });
+      }
+    } else {
+      return NextResponse.json({ error: "Cannot preview the team folder." }, { status: 400 });
+    }
 
     const name = meta.name || "file";
     const mimeType = meta.mimeType || "application/octet-stream";

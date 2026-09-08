@@ -9,15 +9,12 @@ import { ArrowRightIcon } from "@/components/icons";
 import { requireActiveSession } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
 import { getDisplayName } from "@/lib/userColor";
+import { db } from "@/db";
+import { projects, users } from "@/db/schema";
+import { getCheckpoints } from "@/lib/checkpoints-store";
+import { count, desc } from "drizzle-orm";
 
 import { SECTIONS } from "@/components/sections";
-
-const stats = [
-  { value: "01", label: "Live phase — auth + shell" },
-  { value: String(SECTIONS.length).padStart(2, "0"), label: "Sections reserved" },
-  { value: "06", label: "Phases on the roadmap" },
-  { value: "00", label: "Hardcoded secrets" },
-];
 
 const marqueeItems = [
   "Files",
@@ -42,6 +39,36 @@ export default async function DashboardPage() {
 
   // Signed in (guards redirect to /signin when there is no session).
   const user = await requireActiveSession();
+
+  // Real operational metrics — never fabricated. Each count is a live DB/Sheet query.
+  const [projectRows, memberCount, checkpointRows] = await Promise.all([
+    db
+      .select({ id: projects.id, title: projects.title, createdAt: projects.createdAt })
+      .from(projects)
+      .orderBy(projects.createdAt)
+      .limit(100)
+      .then((rows) => rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()))
+      .catch(() => [] as Array<{ id: string; title: string; createdAt: Date }>),
+    db
+      .select({ c: count() })
+      .from(users)
+      .then((r) => Number(r[0]?.c ?? 0))
+      .catch(() => 0),
+    getCheckpoints()
+      .then((rows) => rows)
+      .catch(() => [] as Awaited<ReturnType<typeof getCheckpoints>>),
+  ]);
+  const projectCount = projectRows.length;
+  const checkpointCount = checkpointRows.length;
+  const recentProjects = projectRows.slice(0, 3);
+  const recentCheckpoints = checkpointRows.slice(0, 3);
+
+  const stats = [
+    { value: String(projectCount).padStart(2, "0"), label: "Projects published" },
+    { value: String(memberCount).padStart(2, "0"), label: "Team members" },
+    { value: String(checkpointCount).padStart(2, "0"), label: "Checkpoints logged" },
+    { value: String(SECTIONS.length).padStart(2, "0"), label: "Sections live" },
+  ];
 
   return (
     <AppShell
@@ -132,6 +159,58 @@ export default async function DashboardPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ── Operational overview — real data, not mocks ── */}
+      <section className="pt-10">
+        <Reveal>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-hairline bg-canvas p-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold">Recent projects</h3>
+                <Link href="/projects" className="text-xs font-semibold text-ink underline">View all →</Link>
+              </div>
+              {recentProjects.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-fog px-4 py-6 text-center text-sm text-steel">No projects yet — publish your first project to see it here.</p>
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {recentProjects.map((p) => (
+                    <li key={p.id} className="flex items-center justify-between rounded-xl border border-hairline-soft bg-fog/50 px-4 py-3">
+                      <span className="truncate text-sm font-medium text-ink">{p.title}</span>
+                      <span className="ml-3 shrink-0 font-mono text-xs text-stone">{new Date(p.createdAt).toLocaleDateString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex gap-2">
+                <Link href="/projects" className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white hover:bg-charcoal">Publish project</Link>
+                <Link href="/files" className="rounded-full border border-hairline px-4 py-2 text-xs font-semibold hover:border-ink">Browse files</Link>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-hairline bg-canvas p-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold">Recent checkpoints</h3>
+                <Link href="/checkpoints" className="text-xs font-semibold text-ink underline">Open canvas →</Link>
+              </div>
+              {recentCheckpoints.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-fog px-4 py-6 text-center text-sm text-steel">No checkpoints yet — be the first to post a milestone.</p>
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {recentCheckpoints.map((c) => (
+                    <li key={c.id} className="rounded-xl border border-hairline-soft bg-fog/50 px-4 py-3">
+                      <p className="truncate text-sm font-medium text-ink">{c.note.slice(0, 80)}</p>
+                      <p className="mt-1 font-mono text-xs text-stone">{c.userEmail} · {new Date(c.createdAt).toLocaleDateString()}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex gap-2">
+                <Link href="/checkpoints" className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white hover:bg-charcoal">Open canvas</Link>
+                <Link href="/chat" className="rounded-full border border-hairline px-4 py-2 text-xs font-semibold hover:border-ink">Open chat</Link>
+              </div>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── Section matrix ── */}

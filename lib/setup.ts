@@ -275,6 +275,13 @@ export async function runBootstrap(
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );`,
+      `CREATE INDEX IF NOT EXISTS "projects_user_id_idx" ON "projects" ("user_id")`,
+      `CREATE INDEX IF NOT EXISTS "projects_created_at_idx" ON "projects" ("created_at" DESC)`,
+      `CREATE INDEX IF NOT EXISTS "chat_messages_user_id_idx" ON "chat_messages" ("user_id")`,
+      `CREATE INDEX IF NOT EXISTS "calls_created_by_idx" ON "calls" ("created_by")`,
+      `CREATE INDEX IF NOT EXISTS "calls_expires_at_idx" ON "calls" ("expires_at")`,
+      `CREATE INDEX IF NOT EXISTS "scheduled_meetings_organizer_idx" ON "scheduled_meetings" ("organizer_id")`,
+      `CREATE INDEX IF NOT EXISTS "scheduled_meetings_start_time_idx" ON "scheduled_meetings" ("start_time")`,
     ];
     for (const stmt of alters) {
       try {

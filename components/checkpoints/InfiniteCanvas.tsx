@@ -17,7 +17,7 @@ type CanvasNode = CheckpointItem & {
   isCentral?: boolean;
 };
 
-type Tool = "select" | "hand" | "sticky" | "wire" | "text" | "frame";
+type Tool = "select" | "hand";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const NOTE_COLORS: Record<CanvasNode["colorKey"], { bg: string; border: string; headerBorder: string; pill: string; pillText: string }> = {
@@ -27,6 +27,15 @@ const NOTE_COLORS: Record<CanvasNode["colorKey"], { bg: string; border: string; 
   peach: { bg: "bg-[#fff7ed]", border: "border-[#fed7aa]", headerBorder: "border-orange-100", pill: "bg-orange-100", pillText: "text-orange-900" },
   blue: { bg: "bg-[#f0f9ff]", border: "border-[#bae6fd]", headerBorder: "border-sky-100", pill: "bg-sky-100", pillText: "text-sky-900" },
   white: { bg: "bg-white", border: "border-zinc-300", headerBorder: "border-zinc-200", pill: "bg-zinc-100", pillText: "text-zinc-700" },
+};
+
+const MINIMAP_DOT: Record<CanvasNode["colorKey"], string> = {
+  yellow: "#eab308",
+  mint: "#10b981",
+  lilac: "#a855f7",
+  peach: "#f97316",
+  blue: "#0ea5e9",
+  white: "#a1a1aa",
 };
 
 function hashString(s: string) {
@@ -103,8 +112,19 @@ export function InfiniteCanvas({
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<Tool>("select");
   const [isPanning, setIsPanning] = useState(false);
-  const panRef = useRef<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  // Live mirrors so native (non-React) listeners always see fresh values
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const panMirror = useRef(pan);
+  panMirror.current = pan;
+  // Active gesture — window-level move/up listeners drive these so dragging
+  // never breaks (no pointer-capture retargeting issues, no stale closures)
+  const gestureRef = useRef<
+    | null
+    | { mode: "pan"; startX: number; startY: number }
+    | { mode: "drag"; id: string; dx: number; dy: number; rectLeft: number; rectTop: number; panX: number; panY: number; zoom: number }
+  >(null);
 
   // Selection + editing
   const [selectedId, setSelectedId] = useState<string | null>(initialItems[0]?.id ?? null);
@@ -112,6 +132,9 @@ export function InfiniteCanvas({
   const [editDraft, setEditDraft] = useState<{ text: string; json: unknown } | null>(null);
   const [editKey, setEditKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  // Latest editing id for the drag guard (skip drag while editing a note)
+  const editingIdRef = useRef<string | null>(null);
+  editingIdRef.current = editingId;
 
   // Create draft
   const [createDraft, setCreateDraft] = useState<{ text: string; json: unknown } | null>(null);
@@ -124,7 +147,6 @@ export function InfiniteCanvas({
   // Draggable node positions — persisted to localStorage per id
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const dragOffset = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     try {
@@ -248,75 +270,157 @@ export function InfiniteCanvas({
   }
 
   // ── Canvas interactions ───────────────────────────────────────────────
-  const onCanvasPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if ((e.target as HTMLElement).closest("[data-node]") || (e.target as HTMLElement).closest("[data-ui]")) return;
-      if (tool === "hand" || e.button === 1 || (e.button === 0 && (e.altKey || (tool as string) === "hand"))) {
-        setIsPanning(true);
-        panRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } else {
-        // click empty canvas -> clear selection or start panning with middle-drag feel
-        setSelectedId(null);
-        setIsPanning(true);
-        panRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-      }
-    },
-    [pan, tool]
-  );
-  const onCanvasPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (isPanning && panRef.current) {
-        setPan({ x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y });
-      }
-      if (draggingId && dragOffset.current) {
-        const worldX = (e.clientX - pan.x) / zoom;
-        const worldY = (e.clientY - pan.y) / zoom;
-        setPositions((p) => ({ ...p, [draggingId]: { x: worldX - dragOffset.current!.x, y: worldY - dragOffset.current!.y } }));
-      }
-    },
-    [isPanning, draggingId, pan, zoom]
-  );
-  const onCanvasPointerUp = useCallback(() => {
-    setIsPanning(false);
-    setDraggingId(null);
-    panRef.current = null;
-    dragOffset.current = null;
+  const canvasOrigin = useCallback(() => {
+    const r = canvasRef.current?.getBoundingClientRect();
+    return { left: r?.left ?? 0, top: r?.top ?? 0, width: r?.width ?? 1, height: r?.height ?? 1 };
   }, []);
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.35, z));
+
+  // Zoom keeping the point under the cursor stationary
+  const zoomAtPoint = useCallback(
+    (clientX: number, clientY: number, nextZoom: number) => {
+      const { left, top } = canvasOrigin();
+      const z0 = zoomRef.current;
+      const z1 = clampZoom(nextZoom);
+      if (z1 === z0) return;
+      const wx = (clientX - left - panMirror.current.x) / z0;
+      const wy = (clientY - top - panMirror.current.y) / z0;
+      const p = { x: clientX - left - wx * z1, y: clientY - top - wy * z1 };
+      panMirror.current = p;
+      zoomRef.current = z1;
+      setPan(p);
+      setZoom(z1);
+    },
+    [canvasOrigin]
+  );
+
+  const centerOnWorld = useCallback(
+    (wx: number, wy: number, targetZoom?: number) => {
+      const { width, height } = canvasOrigin();
+      const z1 = targetZoom === undefined ? zoomRef.current : clampZoom(targetZoom);
+      zoomRef.current = z1;
+      setZoom(z1);
+      const p = { x: width / 2 - wx * z1, y: height / 2 - wy * z1 };
+      panMirror.current = p;
+      setPan(p);
+    },
+    [canvasOrigin]
+  );
+
+  const focusDraft = useCallback(() => {
+    // Draft card lives at world (1110, 300), ~340px wide
+    centerOnWorld(1110 + 170, 300 + 110);
+    window.setTimeout(() => document.getElementById("draft-textarea")?.focus(), 60);
+  }, [centerOnWorld]);
+
+  // Native non-passive wheel listener: React's onWheel is passive at the root,
+  // so preventDefault() there is ignored and ctrl+scroll zooms the whole page.
+  // This captures ctrl/cmd+wheel first and zooms ONLY the canvas mesh.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onNativeWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      const delta = -e.deltaY * 0.001;
-      setZoom((z) => Math.min(2, Math.max(0.35, z + delta)));
-    }
+      e.stopPropagation();
+      zoomAtPoint(e.clientX, e.clientY, zoomRef.current * Math.exp(-e.deltaY * 0.0015));
+    };
+    el.addEventListener("wheel", onNativeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onNativeWheel);
+  }, [zoomAtPoint]);
+
+  // Window-level move/up: drives pan + note drag regardless of which element
+  // is under the pointer, so dragging notes never drops or jumps.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const g = gestureRef.current;
+      if (!g) return;
+      if (g.mode === "pan") {
+        const p = { x: e.clientX - g.startX, y: e.clientY - g.startY };
+        panMirror.current = p;
+        setPan(p);
+      } else {
+        const wx = (e.clientX - g.rectLeft - g.panX) / g.zoom;
+        const wy = (e.clientY - g.rectTop - g.panY) / g.zoom;
+        setPositions((p) => ({ ...p, [g.id]: { x: wx - g.dx, y: wy - g.dy } }));
+      }
+    };
+    const onUp = () => {
+      gestureRef.current = null;
+      setIsPanning(false);
+      setDraggingId(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
   }, []);
+
+  const onCanvasPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button === 2) return;
+      if ((e.target as HTMLElement).closest("[data-node]") || (e.target as HTMLElement).closest("[data-ui]")) return;
+      const { left, top } = canvasOrigin();
+      // Click empty canvas -> clear selection; any drag pans (hand tool or not)
+      if (e.button === 0 && tool === "select" && !e.altKey) setSelectedId(null);
+      gestureRef.current = { mode: "pan", startX: e.clientX - left - panMirror.current.x, startY: e.clientY - top - panMirror.current.y };
+      setIsPanning(true);
+    },
+    [canvasOrigin, tool]
+  );
 
   const handleNodePointerDown = useCallback(
     (e: React.PointerEvent, node: CanvasNode) => {
+      if (e.button !== 0) return;
+      // Hand tool: let the event bubble so the canvas pans from anywhere
+      if (tool !== "select") return;
       e.stopPropagation();
       setSelectedId(node.id);
-      if (tool === "select") {
-        setDraggingId(node.id);
-        const worldX = (e.clientX - pan.x) / zoom;
-        const worldY = (e.clientY - pan.y) / zoom;
-        dragOffset.current = { x: worldX - node.canvasX, y: worldY - node.canvasY };
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      }
+      // Never hijack text editing / form controls / buttons inside a note
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable], button, a")) return;
+      if (editingIdRef.current === node.id) return;
+      const { left, top } = canvasOrigin();
+      const z = zoomRef.current;
+      const wx = (e.clientX - left - panMirror.current.x) / z;
+      const wy = (e.clientY - top - panMirror.current.y) / z;
+      gestureRef.current = {
+        mode: "drag",
+        id: node.id,
+        dx: wx - node.canvasX,
+        dy: wy - node.canvasY,
+        rectLeft: left,
+        rectTop: top,
+        panX: panMirror.current.x,
+        panY: panMirror.current.y,
+        zoom: z,
+      };
+      setDraggingId(node.id);
     },
-    [tool, pan, zoom]
+    [canvasOrigin, tool]
   );
 
-  // Keyboard: "/" focuses search like HTML
+  // Keyboard: "/" focuses search, V/H switch tools, Esc cancels editing/drag
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "/" && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable);
+      if (e.key === "/" && !typing) {
         e.preventDefault();
         document.getElementById("canvas-search")?.focus();
       }
+      if (!typing && (e.key === "v" || e.key === "V")) setTool("select");
+      if (!typing && (e.key === "h" || e.key === "H")) setTool("hand");
       if (e.key === "Escape") {
         setEditingId(null);
+        gestureRef.current = null;
         setDraggingId(null);
+        setIsPanning(false);
       }
     };
     window.addEventListener("keydown", h);
@@ -380,13 +484,9 @@ export function InfiniteCanvas({
             </div>
           </div>
           <div className="h-5 w-[1px] bg-zinc-200 ml-2 hidden sm:block" />
-          <nav className="hidden md:flex items-center bg-zinc-100 p-0.5 rounded-lg text-xs font-medium border border-zinc-200/80">
-            <a href="/checkpoints?view=list" className="px-3 py-1 rounded-md text-zinc-600 hover:text-zinc-900 transition-colors">
-              Timeline List
-            </a>
-            <span className="px-3 py-1 rounded-md bg-white text-zinc-900 shadow-sm font-semibold">Infinite Graph Canvas</span>
-            <span className="px-3 py-1 rounded-md text-zinc-400 cursor-not-allowed">Ideation Board</span>
-          </nav>
+          <span className="hidden md:inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200/80">
+            Infinite Graph Canvas
+          </span>
         </div>
 
         <div className="relative hidden lg:block w-96">
@@ -410,10 +510,16 @@ export function InfiniteCanvas({
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center -space-x-2 mr-2">
             {collaborators.slice(0, 3).map((u) => (
-              <div key={u.id} className="relative group cursor-pointer" title={`${getDisplayName(u.displayName, u.email)} (${u.role})`}>
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setSearch((s) => (s === u.email ? "" : u.email))}
+                className="relative cursor-pointer rounded-full"
+                title={`${getDisplayName(u.displayName, u.email)} (${u.role}) — click to filter`}
+              >
                 <UserAvatar displayName={u.displayName} email={u.email} userId={u.id} avatarDriveId={u.avatarDriveId} size={28} />
                 <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-white" />
-              </div>
+              </button>
             ))}
             {collaborators.length > 3 && (
               <div className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center text-[10px] font-medium ring-2 ring-white border border-zinc-200">
@@ -422,12 +528,9 @@ export function InfiniteCanvas({
             )}
           </div>
           <button
-            onClick={() => {
-              const el = document.getElementById("draft-node");
-              el?.scrollIntoView({ behavior: "smooth", block: "center" });
-              document.getElementById("draft-textarea")?.focus();
-            }}
+            onClick={focusDraft}
             className="hidden sm:inline-flex items-center px-3 py-1.5 text-xs font-medium text-zinc-700 bg-white border border-zinc-300 rounded-lg hover:bg-zinc-50 transition shadow-sm"
+            title="Pan to the note composer"
           >
             <svg className="w-3.5 h-3.5 mr-1.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
@@ -435,8 +538,9 @@ export function InfiniteCanvas({
             New Sticky
           </button>
           <button
-            onClick={() => document.getElementById("draft-textarea")?.focus()}
+            onClick={focusDraft}
             className="inline-flex items-center px-3.5 py-1.5 text-xs font-medium text-white bg-[#52525b] hover:bg-[#3f3f46] rounded-lg shadow-sm transition"
+            title="Pan to the note composer"
           >
             <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
@@ -446,11 +550,11 @@ export function InfiniteCanvas({
         </div>
       </header>
 
-      {/* ── Left Floating Toolbar ── */}
+      {/* ── Left Floating Toolbar: canvas tools only ── */}
       <aside className="absolute left-6 top-24 z-20 flex flex-col bg-white border border-[#e4e4e7] rounded-xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.08),0_4px_12px_-2px_rgba(0,0,0,0.04)] p-1.5 space-y-1" data-ui>
         {[
-          { id: "select", icon: "M3 3l7 18 3-7 7-3L3 3z", title: "Select (V)" },
-          { id: "hand", icon: "M18 11V6a2 2 0 00-4 0v5m-4 0V4a2 2 0 00-4 0v9m-4 0V8a2 2 0 00-4 0v10a6 6 0 0012 0v-4", title: "Hand / Pan (H)" },
+          { id: "select", icon: "M3 3l7 18 3-7 7-3L3 3z", title: "Select / move notes (V)" },
+          { id: "hand", icon: "M18 11V6a2 2 0 00-4 0v5m-4 0V4a2 2 0 00-4 0v9m-4 0V8a2 2 0 00-4 0v10a6 6 0 0012 0v-4", title: "Hand / pan canvas (H)" },
         ].map((t) => (
           <button
             key={t.id}
@@ -463,37 +567,12 @@ export function InfiniteCanvas({
             </svg>
           </button>
         ))}
-        <div className="h-[1px] bg-zinc-200 my-1 mx-1" />
-        {[
-          { id: "sticky", icon: "M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z M15 3v6h6", color: "text-amber-600 bg-amber-50", title: "Sticky Note (S)" },
-          { id: "wire", icon: "M5 12h14M12 5l7 7-7 7", title: "Connector Wire (C)" },
-          { id: "text", label: "T", title: "Text (T)" },
-          { id: "frame", icon: "M3 3h18v18H3z M9 3v18M15 3v18M3 9h18M3 15h18", title: "Frame (F)" },
-        ].map((t: any) => (
-          <button
-            key={t.id}
-            onClick={() => setTool(t.id as Tool)}
-            className={`p-2 rounded-lg transition flex items-center justify-center ${t.color || "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"} ${tool === t.id ? "ring-1 ring-zinc-300" : ""}`}
-            title={t.title}
-          >
-            {t.label ? <span className="text-xs font-serif font-bold">{t.label}</span> : <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d={t.icon} /></svg>}
-          </button>
-        ))}
-        <div className="h-[1px] bg-zinc-200 my-1 mx-1" />
-        <button className="p-2 rounded-lg text-purple-600 hover:bg-purple-50 transition flex items-center justify-center" title="AI Copilot Summarizer" onClick={() => alert("AI Copilot: summarizes canvas threads into release notes — coming soon")}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
-          </svg>
-        </button>
       </aside>
 
       {/* ── Infinite Canvas Workspace ── */}
       <main
         ref={canvasRef}
         onPointerDown={onCanvasPointerDown}
-        onPointerMove={onCanvasPointerMove}
-        onPointerUp={onCanvasPointerUp}
-        onWheel={onWheel}
         className={`absolute inset-0 pt-16 overflow-hidden ${tool === "hand" || isPanning ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
         style={{ touchAction: "none" }}
       >
@@ -515,9 +594,11 @@ export function InfiniteCanvas({
               </filter>
             </defs>
             {connectors.map((c, i) => {
-              const fx = c.from.canvasX + 135;
+              const fhw = c.from.isCentral ? 165 : 135;
+              const thw = c.to.isCentral ? 165 : 135;
+              const fx = c.from.canvasX + fhw;
               const fy = c.from.canvasY + 80;
-              const tx = c.to.canvasX + 135;
+              const tx = c.to.canvasX + thw;
               const ty = c.to.canvasY + 40;
               const mx = (fx + tx) / 2;
               return (
@@ -537,7 +618,7 @@ export function InfiniteCanvas({
             {/* Anchor dots */}
             {connectors.slice(0, 4).map((c, i) => (
               <g key={`dot-${i}`}>
-                <circle cx={c.to.canvasX + 135} cy={c.to.canvasY + 40} r="3.5" fill={i === 0 ? "#10b981" : i === 2 ? "#a855f7" : i === 3 ? "#71717a" : "#52525b"} stroke="#ffffff" strokeWidth="1.5" />
+                <circle cx={c.to.canvasX + (c.to.isCentral ? 165 : 135)} cy={c.to.canvasY + 40} r="3.5" fill={i === 0 ? "#10b981" : i === 2 ? "#a855f7" : i === 3 ? "#71717a" : "#52525b"} stroke="#ffffff" strokeWidth="1.5" />
               </g>
             ))}
           </svg>
@@ -556,19 +637,14 @@ export function InfiniteCanvas({
                   data-node
                   onPointerDown={(e) => handleNodePointerDown(e, node)}
                   onClick={() => setSelectedId(node.id)}
-                  className={`absolute canvas-node cursor-pointer select-text ${colors.bg} border rounded-xl p-4 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_30px_-10px_rgba(0,0,0,0.08),0_10px_15px_-5px_rgba(0,0,0,0.04)] ${isCentral ? "border-2 rounded-2xl p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05)] ring-4 ring-amber-100/60 w-[330px]" : "w-[270px]"} ${isSelected ? "ring-2 ring-zinc-900/10 z-10" : ""}`}
-                  style={{ left: node.canvasX, top: node.canvasY }}
+                  className={`absolute canvas-node group select-text ${colors.bg} border rounded-xl p-4 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_30px_-10px_rgba(0,0,0,0.08),0_10px_15px_-5px_rgba(0,0,0,0.04)] ${draggingId === node.id ? "cursor-grabbing z-20" : "cursor-pointer"} ${isCentral ? "border-2 rounded-2xl p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05)] ring-4 ring-amber-100/60 w-[330px]" : "w-[270px]"} ${isSelected ? "ring-2 ring-zinc-900/10 z-10" : ""}`}
+                  style={{ left: node.canvasX, top: node.canvasY, transition: draggingId === node.id ? "none" : undefined }}
                 >
                   <div className={`washi-tape absolute -top-2.5 left-1/2 -translate-x-1/2 h-4 rounded-sm border border-zinc-200/50 backdrop-blur-[2px] ${isCentral ? "w-24 h-5 -top-3 border-amber-200/80" : "w-16"} rotate-1`} style={{ background: "rgba(255,255,255,0.7)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }} />
 
                   <div className={`flex items-center justify-between pb-2 border-b ${colors.headerBorder}`}>
                     <span className={`inline-flex items-center text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${colors.pill} ${colors.pillText}`}>{pillLabelFor(node)}</span>
-                    <span className="text-[10px] font-mono" style={{ color: colors.pillText.replace("text-", "") ? undefined : undefined }}>
-                      <span className={colors.pillText.replace("bg-", "").replace("text-", "text-").split(" ")[0]} style={{}}>
-                        {formatDateTime(node.createdAt).split(",")[1]?.trim().slice(0, 8) ?? ""}
-                      </span>
-                      <span className="text-zinc-500 font-mono text-[10px]">{new Date(node.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    </span>
+                    <span className="text-zinc-500 font-mono text-[10px]">{new Date(node.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
 
                   {isEditing ? (
@@ -756,7 +832,7 @@ export function InfiniteCanvas({
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-zinc-300" /> Draft Checkpoint Note
                 </span>
-                <span className="text-[10px] font-mono">Press ⌘ + ↵ to drop</span>
+                <span className="text-[10px] font-mono">Type + Enter ↵ to post</span>
               </div>
               <div className="mt-3">
                 <TiptapEditor
@@ -790,7 +866,7 @@ export function InfiniteCanvas({
               </div>
               {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
               <div className="mt-4 flex items-center justify-end gap-2">
-                <button onClick={() => setCreateDraft(null)} className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-800">
+                <button onClick={() => { setCreateDraft(null); setCreateKey((k) => k + 1); }} className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-800">
                   Clear
                 </button>
                 <button
@@ -841,14 +917,22 @@ export function InfiniteCanvas({
                     .map((c, i) => {
                       const other = c.from.id === selectedNode.id ? c.to : c.from;
                       return (
-                        <div key={i} onClick={() => setSelectedId(other.id)} className="flex items-center justify-between p-2 rounded bg-white border border-zinc-200 hover:border-zinc-300 cursor-pointer">
+                        <div
+                          key={i}
+                          onClick={() => {
+                            setSelectedId(other.id);
+                            centerOnWorld(other.canvasX + (other.isCentral ? 165 : 135), other.canvasY + 80);
+                          }}
+                          className="flex items-center justify-between p-2 rounded bg-white border border-zinc-200 hover:border-zinc-300 cursor-pointer"
+                          title="Jump to this note"
+                        >
                           <span className="text-zinc-700 truncate font-medium text-xs">{other.note.slice(0, 28)}</span>
                           <span className="text-[10px] text-zinc-400">{c.from.id === selectedNode.id ? "Outbound" : "Inbound"}</span>
                         </div>
                       );
                     })}
                   {connectors.filter((c) => c.from.id === selectedNode.id || c.to.id === selectedNode.id).length === 0 && (
-                    <p className="text-zinc-500 text-xs">No connections yet — drag the wire tool between nodes.</p>
+                    <p className="text-zinc-500 text-xs">No connections yet.</p>
                   )}
                 </div>
               </div>
@@ -864,15 +948,6 @@ export function InfiniteCanvas({
                 </div>
                 <p className="mt-2 font-mono text-[11px] text-zinc-500">{formatDateTime(selectedNode.createdAt)}</p>
               </div>
-              <div>
-                <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-2">Sync Status</div>
-                <div className="flex items-center gap-2 text-zinc-600 text-[11px]">
-                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                  </svg>
-                  <span>Synced with Neon Database (just now)</span>
-                </div>
-              </div>
             </>
           ) : (
             <div className="py-8 text-center">
@@ -884,18 +959,19 @@ export function InfiniteCanvas({
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div>}
         </div>
         <div className="p-4 border-t border-[#e4e4e7] bg-zinc-50/60">
-          <button
-            onClick={() => {
-              if (selectedNode && canModerate(selectedNode)) handleDelete(selectedNode);
-              else alert("Only author or admin can promote — this would mark as official milestone.");
-            }}
-            className="w-full py-2 px-3 text-xs font-medium text-white bg-[#52525b] hover:bg-[#3f3f46] rounded-lg transition shadow-sm flex items-center justify-center gap-2"
-          >
-            <span>{selectedNode && canModerate(selectedNode) ? "Delete Checkpoint" : "Promote to Official Milestone"}</span>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-            </svg>
-          </button>
+          {selectedNode && canModerate(selectedNode) ? (
+            <button
+              onClick={() => handleDelete(selectedNode)}
+              className="w-full py-2 px-3 text-xs font-medium text-white bg-[#52525b] hover:bg-[#3f3f46] rounded-lg transition shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>Delete Checkpoint</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+            </button>
+          ) : (
+            <p className="text-center text-[11px] text-zinc-400">Only the author or an admin can delete this note.</p>
+          )}
         </div>
       </aside>
 
@@ -911,13 +987,13 @@ export function InfiniteCanvas({
       {/* ── Bottom Canvas Controls ── */}
       <footer className="absolute bottom-6 left-6 z-20 flex items-center gap-3" data-ui>
         <div className="flex items-center bg-white border border-[#e4e4e7] rounded-xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.08),0_4px_12px_-2px_rgba(0,0,0,0.04)] px-2 py-1.5 space-x-2 text-xs font-medium text-zinc-700">
-          <button onClick={() => setZoom((z) => Math.max(0.35, z - 0.1))} className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900" title="Zoom Out">
+          <button onClick={() => { const o = canvasOrigin(); zoomAtPoint(o.left + o.width / 2, o.top + o.height / 2, zoomRef.current - 0.15); }} className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900" title="Zoom Out">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M20 12H4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
             </svg>
           </button>
           <span className="w-12 text-center font-mono text-[11px] font-semibold text-zinc-800 select-none">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom((z) => Math.min(2, z + 0.1))} className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900" title="Zoom In">
+          <button onClick={() => { const o = canvasOrigin(); zoomAtPoint(o.left + o.width / 2, o.top + o.height / 2, zoomRef.current + 0.15); }} className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900" title="Zoom In">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
             </svg>
@@ -930,12 +1006,35 @@ export function InfiniteCanvas({
           </button>
         </div>
         <div className="hidden sm:flex items-center bg-white border border-[#e4e4e7] rounded-xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.08)] p-1 text-xs">
-          <div className="w-20 h-11 bg-zinc-50 rounded border border-zinc-200 relative overflow-hidden flex items-center justify-center">
-            <div className="w-2.5 h-1.5 bg-emerald-400 rounded-[1px] absolute top-2 left-3" />
-            <div className="w-3.5 h-2.5 bg-amber-400 rounded-[1px] absolute top-3.5 left-7 border border-amber-500" />
-            <div className="w-2.5 h-1.5 bg-orange-400 rounded-[1px] absolute top-6.5 left-7" />
-            <div className="w-3.5 h-2 bg-zinc-300 rounded-[1px] absolute top-4 right-2 border border-dashed border-zinc-400" />
-            <div className="w-12 h-8 border border-zinc-900/60 rounded-[2px] pointer-events-none absolute" style={{ left: `${Math.max(2, Math.min(68, 40 - pan.x / 60))}px`, top: `${Math.max(2, Math.min(30, 16 - pan.y / 60))}px` }} />
+          <div
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              centerOnWorld(((e.clientX - r.left) / r.width) * 2400, ((e.clientY - r.top) / r.height) * 1600);
+            }}
+            className="w-20 h-11 bg-zinc-50 rounded border border-zinc-200 relative overflow-hidden cursor-pointer"
+            title="Click to jump"
+          >
+            {filteredNodes.map((n) => (
+              <span
+                key={n.id}
+                className="absolute w-1.5 h-1.5 rounded-full pointer-events-none"
+                style={{ left: `${(n.canvasX / 2400) * 100}%`, top: `${(n.canvasY / 1600) * 100}%`, background: MINIMAP_DOT[n.colorKey] }}
+              />
+            ))}
+            {(() => {
+              const o = canvasOrigin();
+              return (
+                <div
+                  className="border border-zinc-900/60 rounded-[2px] pointer-events-none absolute"
+                  style={{
+                    left: `${(-pan.x / zoom / 2400) * 100}%`,
+                    top: `${(-pan.y / zoom / 1600) * 100}%`,
+                    width: `${(o.width / zoom / 2400) * 100}%`,
+                    height: `${(o.height / zoom / 1600) * 100}%`,
+                  }}
+                />
+              );
+            })()}
           </div>
         </div>
       </footer>

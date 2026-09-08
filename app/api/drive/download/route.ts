@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   downloadDriveFile,
   getDriveAccessToken,
+  isDescendantOfFolder,
   isValidDriveFileId,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
@@ -38,12 +39,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  if (id === drive.folderId) {
+    return NextResponse.json({ error: "Cannot download the team folder itself — zip it instead." }, { status: 400 });
+  }
+
   try {
     const accessToken = await getDriveAccessToken(
       drive.clientId,
       drive.clientSecret,
       drive.refreshToken
     );
+
+    const inside = await isDescendantOfFolder(accessToken, id, drive.folderId);
+    if (!inside) {
+      return NextResponse.json({ error: "File is not inside the team folder." }, { status: 403 });
+    }
 
     const metaRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,mimeType,size`,

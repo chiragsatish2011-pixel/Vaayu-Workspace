@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDriveAccessToken, isValidDriveFileId, listDriveTree, downloadDriveFile } from "@/lib/drive";
+import { getDriveAccessToken, isDescendantOfFolder, isValidDriveFileId, listDriveTree, downloadDriveFile } from "@/lib/drive";
 // archiver is CJS — use require inside handler to avoid Turbopack static export error
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const getArchiver = () => {
@@ -142,6 +142,13 @@ export async function POST(req: NextRequest) {
       };
       if (meta.trashed) {
         return NextResponse.json({ error: `File or folder was deleted: ${reqId}` }, { status: 404 });
+      }
+      // Folder-lock: requested id must be inside team folder
+      if (reqId !== drive.folderId) {
+        const inside = await isDescendantOfFolder(accessToken, reqId, drive.folderId);
+        if (!inside && !(Array.isArray(meta.parents) && meta.parents.includes(drive.folderId))) {
+          return NextResponse.json({ error: `File or folder is not inside the team folder: ${reqId}` }, { status: 403 });
+        }
       }
       const isFolder = meta.mimeType === "application/vnd.google-apps.folder";
       if (isFolder) {

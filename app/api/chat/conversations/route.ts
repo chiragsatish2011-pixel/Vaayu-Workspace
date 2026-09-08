@@ -7,7 +7,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireApiSession } from "@/lib/session";
-import { getConversationDetail } from "@/lib/chat-detail";
+import { getConversationDetail, getConversationDetailsBatch } from "@/lib/chat-detail";
 import { grantConversationToUser, publishToUser } from "@/lib/chat-bus";
 
 export const runtime = "nodejs";
@@ -40,13 +40,12 @@ export async function GET() {
       .where(inArray(conversations.id, ids))
       .orderBy(desc(conversations.updatedAt));
 
-    // 3. Detail per conversation (members, last message, unread).
-    const details = await Promise.all(
-      convRows.map((c) => getConversationDetail(c.id, user.id))
-    );
+    // 3. Detail per conversation (members, last message, unread) — batched to avoid N×5 Neon fetches.
+    const idsOrdered = convRows.map((c) => c.id);
+    const details = await getConversationDetailsBatch(idsOrdered, user.id);
 
     return NextResponse.json({
-      conversations: details.filter((d) => d !== null),
+      conversations: details,
     });
   } catch (err) {
     console.error("[GET /api/chat/conversations]", err);

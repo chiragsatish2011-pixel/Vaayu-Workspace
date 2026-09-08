@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteDriveFile,
   getDriveAccessToken,
+  isDescendantOfFolder,
   isValidDriveFileId,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
@@ -37,12 +38,20 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
+  if (id === drive.folderId) {
+    return NextResponse.json({ error: "Cannot delete the team root folder." }, { status: 403 });
+  }
+
   try {
     const accessToken = await getDriveAccessToken(
       drive.clientId,
       drive.clientSecret,
       drive.refreshToken
     );
+    const inside = await isDescendantOfFolder(accessToken, id, drive.folderId);
+    if (!inside) {
+      return NextResponse.json({ error: "File is not inside the team folder." }, { status: 403 });
+    }
     await deleteDriveFile(accessToken, id);
     console.log(`[drive/delete] id=${id} by (${user.email})`);
     return NextResponse.json({ ok: true, id });

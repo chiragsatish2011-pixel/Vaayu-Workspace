@@ -9,7 +9,7 @@ import {
   verifyDriveFileInFolder,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
-import { requireActiveSession } from "@/lib/session";
+import { requireActiveSession, requireApiSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -26,43 +26,93 @@ function formatFileSize(bytes: number): string {
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 
 /**
- * GET /api/projects — List all projects with author metadata, newest first.
+ * GET /api/projects — List projects with author metadata, newest first.
+ * Supports ?limit=20&cursor=<ISO createdAt> for server-side pagination to avoid
+ * loading thousands of rows into the browser when datasets grow.
  */
-export async function GET() {
-  const user = await requireActiveSession();
+export async function GET(req: NextRequest) {
+  const user = await requireApiSession();
   if (!user) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
 
+  const url = new URL(req.url);
+  const limitRaw = url.searchParams.get("limit");
+  const cursorRaw = url.searchParams.get("cursor");
+  let limit = 50;
+  if (limitRaw) {
+    const parsed = parseInt(limitRaw, 10);
+    if (Number.isFinite(parsed)) limit = Math.min(100, Math.max(1, parsed));
+  }
+  let cursorDate: Date | null = null;
+  if (cursorRaw) {
+    const d = new Date(cursorRaw);
+    if (!isNaN(d.getTime())) cursorDate = d;
+  }
+
   try {
-    const rows = await db
-      .select({
-        id: projects.id,
-        title: projects.title,
-        description: projects.description,
-        codebaseDriveId: projects.codebaseDriveId,
-        codebaseFileName: projects.codebaseFileName,
-        codebaseFileSize: projects.codebaseFileSize,
-        previewDriveId: projects.previewDriveId,
-        previewFileName: projects.previewFileName,
-        createdAt: projects.createdAt,
-        updatedAt: projects.updatedAt,
-        userId: projects.userId,
-        userEmail: users.email,
-        userRole: users.role,
-        userDisplayName: users.displayName,
-        userAvatarDriveId: users.avatarDriveId,
-      })
-      .from(projects)
-      .innerJoin(users, eq(projects.userId, users.id))
-      .orderBy(desc(projects.createdAt));
+    let rows;
+    if (cursorDate) {
+      const { lt } = await import("drizzle-orm");
+      rows = await db
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          codebaseDriveId: projects.codebaseDriveId,
+          codebaseFileName: projects.codebaseFileName,
+          codebaseFileSize: projects.codebaseFileSize,
+          previewDriveId: projects.previewDriveId,
+          previewFileName: projects.previewFileName,
+          createdAt: projects.createdAt,
+          updatedAt: projects.updatedAt,
+          userId: projects.userId,
+          userEmail: users.email,
+          userRole: users.role,
+          userDisplayName: users.displayName,
+          userAvatarDriveId: users.avatarDriveId,
+        })
+        .from(projects)
+        .innerJoin(users, eq(projects.userId, users.id))
+        .where(lt(projects.createdAt, cursorDate))
+        .orderBy(desc(projects.createdAt))
+        .limit(limit + 1);
+    } else {
+      rows = await db
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          codebaseDriveId: projects.codebaseDriveId,
+          codebaseFileName: projects.codebaseFileName,
+          codebaseFileSize: projects.codebaseFileSize,
+          previewDriveId: projects.previewDriveId,
+          previewFileName: projects.previewFileName,
+          createdAt: projects.createdAt,
+          updatedAt: projects.updatedAt,
+          userId: projects.userId,
+          userEmail: users.email,
+          userRole: users.role,
+          userDisplayName: users.displayName,
+          userAvatarDriveId: users.avatarDriveId,
+        })
+        .from(projects)
+        .innerJoin(users, eq(projects.userId, users.id))
+        .orderBy(desc(projects.createdAt))
+        .limit(limit + 1);
+    }
+
+    const hasMore = rows.length > limit;
+    const slice: typeof rows = hasMore ? rows.slice(0, limit) : rows;
 
     return NextResponse.json({
-      projects: rows.map((r) => ({
+      projects: slice.map((r: any) => ({
         ...r,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       })),
+      hasMore,
+      nextCursor: hasMore ? (slice[slice.length - 1] as any).createdAt.toISOString() : null,
     });
   } catch (err) {
     console.error("[GET /api/projects]", err);

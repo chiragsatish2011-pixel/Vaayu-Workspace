@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Central environment-variable validation (SERVER ONLY).
  *

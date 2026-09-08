@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Google Drive backend client (SERVER ONLY — never import from client code).
  *

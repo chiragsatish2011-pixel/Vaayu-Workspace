@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -45,25 +46,32 @@ export const checkpoints = pgTable("checkpoints", {
 export type Checkpoint = typeof checkpoints.$inferSelect;
 export type NewCheckpoint = typeof checkpoints.$inferInsert;
 
-export const projects = pgTable("projects", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  codebaseDriveId: text("codebase_drive_id").notNull(),
-  codebaseFileName: text("codebase_file_name").notNull(),
-  codebaseFileSize: text("codebase_file_size").notNull(),
-  previewDriveId: text("preview_drive_id"),
-  previewFileName: text("preview_file_name"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    codebaseDriveId: text("codebase_drive_id").notNull(),
+    codebaseFileName: text("codebase_file_name").notNull(),
+    codebaseFileSize: text("codebase_file_size").notNull(),
+    previewDriveId: text("preview_drive_id"),
+    previewFileName: text("preview_file_name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("projects_user_id_idx").on(t.userId),
+    index("projects_created_at_idx").on(t.createdAt),
+  ]
+);
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
@@ -71,17 +79,21 @@ export type NewProject = typeof projects.$inferInsert;
 export const callTypeEnum = pgEnum("call_type", ["voice", "video"]);
 export const callContextEnum = pgEnum("call_context", ["standalone", "project", "checkpoint"]);
 
-export const calls = pgTable("calls", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  type: callTypeEnum("type").notNull(),
-  context: callContextEnum("context").notNull().default("standalone"),
-  contextId: text("context_id"),
-  dailyRoomName: text("daily_room_name").notNull().unique(),
-  dailyRoomUrl: text("daily_room_url").notNull(),
-  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
+export const calls = pgTable(
+  "calls",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    type: callTypeEnum("type").notNull(),
+    context: callContextEnum("context").notNull().default("standalone"),
+    contextId: text("context_id"),
+    dailyRoomName: text("daily_room_name").notNull().unique(),
+    dailyRoomUrl: text("daily_room_url").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("calls_created_by_idx").on(t.createdBy), index("calls_expires_at_idx").on(t.expiresAt)]
+);
 
 export type Call = typeof calls.$inferSelect;
 export type NewCall = typeof calls.$inferInsert;
@@ -117,42 +129,50 @@ export const conversationParticipants = pgTable("conversation_participants", {
 export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
 export type NewConversationParticipant = typeof conversationParticipants.$inferInsert;
 
-export const chatMessages = pgTable("chat_messages", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  // Scopes every message to exactly one conversation. NULL only for
-  // pre-conversation legacy rows from the old single global room — those
-  // rows are never served by the new access-controlled routes.
-  conversationId: uuid("conversation_id").references(() => conversations.id, {
-    onDelete: "cascade",
-  }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  content: text("content").notNull(),
-  contentJson: text("content_json"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Scopes every message to exactly one conversation. NULL only for
+    // pre-conversation legacy rows from the old single global room — those
+    // rows are never served by the new access-controlled routes.
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "cascade",
+    }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    contentJson: text("content_json"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_messages_user_id_idx").on(t.userId)]
+);
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
 
-export const scheduledMeetings = pgTable("scheduled_meetings", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  title: text("title").notNull(),
-  organizerId: uuid("organizer_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  startTime: timestamp("start_time", { withTimezone: true }).notNull(),
-  durationMinutes: integer("duration_minutes").notNull().default(30),
-  callType: callTypeEnum("call_type").notNull(),
-  rrule: text("rrule"),
-  inviteeIds: text("invitee_ids").notNull().default("[]"),
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
-  excludedDates: text("excluded_dates").notNull().default("[]"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const scheduledMeetings = pgTable(
+  "scheduled_meetings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    title: text("title").notNull(),
+    organizerId: uuid("organizer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+    durationMinutes: integer("duration_minutes").notNull().default(30),
+    callType: callTypeEnum("call_type").notNull(),
+    rrule: text("rrule"),
+    inviteeIds: text("invitee_ids").notNull().default("[]"),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    excludedDates: text("excluded_dates").notNull().default("[]"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("scheduled_meetings_organizer_idx").on(t.organizerId), index("scheduled_meetings_start_time_idx").on(t.startTime)]
+);
 
 export type ScheduledMeeting = typeof scheduledMeetings.$inferSelect;
 export type NewScheduledMeeting = typeof scheduledMeetings.$inferInsert;

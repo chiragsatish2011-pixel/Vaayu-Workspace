@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getDriveAccessToken,
+  isDescendantOfFolder,
   isValidDriveFileId,
   listDriveFolderContents,
   listDriveTree,
@@ -85,32 +86,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "File or folder was deleted." }, { status: 404 });
     }
 
-    // Allow if: direct child of locked folder, or any descendant.
-    // For direct children, parents includes drive.folderId.
-    // For deeper items, we still allow if we can walk up via listDriveTree — but
-    // to avoid extra calls, we accept any item whose metadata we just fetched
-    // and whose parents chain can be verified via a single check: if parents
-    // includes folderId, it's top-level; otherwise, we check if the item is
-    // reachable by listing the locked folder tree (expensive for 27k, so we
-    // do a lightweight check: try to verify via verifyDriveFileInFolder-like logic
-    // but for folders. Instead, we will attempt to list as folder and if it
-    // succeeds, it's likely inside; if it's a file deeper, its parent may not be
-    // the locked root but we still allow it if the file exists and is not trashed
-    // and the user has access — the locked folder guarantee is already enforced
-    // at upload time via parents=[parentFolderId] chain, so any file the user
-    // can fetch via this endpoint that was uploaded through the app is inside.
-    // We add a permissive check: if parents doesn't include folderId, we still
-    // allow but log a warning — the important security is that we never list
-    // the entire locked folder, only the requested subtree.
     const isFolder = meta.mimeType === "application/vnd.google-apps.folder";
     const isDirectChild = Array.isArray(meta.parents) && meta.parents.includes(drive.folderId);
+    const isRoot = id === drive.folderId;
 
-    // For deeper nested files/folders, we need to ensure they are descendants of locked folder.
-    // We do this by walking parents up via Drive API (max 5 hops for sanity) — but to keep
-    // this fast for 27k browse (which would need to walk for each file), we skip for now
-    // and rely on the fact that project IDs are already verified at creation time (POST /api/projects
-    // verifies codebaseDriveId is inside locked folder). So any valid project ID is safe to browse.
-    // This endpoint is only called with project codebaseDriveId which is already verified.
+    // Enforce folder lock: id must be root, direct child, or descendant of locked folder.
+    // This prevents IDOR browsing of arbitrary Drive files outside the team space.
+    if (!isRoot && !isDirectChild) {
+      const inside = await isDescendantOfFolder(accessToken, id, drive.folderId);
+      if (!inside) {
+        return NextResponse.json({ error: "File or folder is not inside the team folder." }, { status: 403 });
+      }
+    }
 
     if (isFolder) {
       // Folder project — recursively list all descendants

@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Google Sheets REST client (SERVER ONLY — never import from client code).
  *
@@ -105,7 +107,7 @@ export async function sheetsAppendRow(
     accessToken,
     "append row",
     `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(
-      `${tab}!A:I`
+      `${tab}!A:J`
     )}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values: [row] }) }
   );

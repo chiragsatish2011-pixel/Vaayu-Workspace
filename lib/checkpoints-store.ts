@@ -271,7 +271,7 @@ export async function deleteCheckpoint(
   await sheetsUpdateRow(
     token,
     spreadsheetId,
-    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:I${hit.rowNumber}`,
+    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:J${hit.rowNumber}`,
     toSheetRow(hit.record)
   );
   invalidateCache(spreadsheetId);
