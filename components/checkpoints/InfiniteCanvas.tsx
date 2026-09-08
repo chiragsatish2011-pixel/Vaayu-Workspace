@@ -461,8 +461,16 @@ export function InfiniteCanvas({
 
   return (
     <div className="relative h-[calc(100vh-57px)] w-full overflow-hidden bg-[#fcfcfc] select-none">
-      {/* Canvas dot grid */}
-      <div className="absolute inset-0 infinite-canvas-bg" style={{ backgroundColor: "#fcfcfc", backgroundImage: "radial-gradient(#d4d4d8 1.1px, transparent 1.1px)", backgroundSize: "24px 24px" }} />
+      {/* Canvas dot grid — infinite, follows pan/zoom so wires never appear to float over static dots */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundColor: "#fcfcfc",
+          backgroundImage: "radial-gradient(#d4d4d8 1.1px, transparent 1.1px)",
+          backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
+          backgroundPosition: `${pan.x}px ${pan.y}px`,
+        }}
+      />
 
       {/* ── Top Navigation Header ── */}
       <header className="absolute top-0 left-0 right-0 z-30 h-16 bg-white/90 backdrop-blur-md border-b border-[#e4e4e7] px-5 flex items-center justify-between" data-ui>
@@ -580,8 +588,8 @@ export function InfiniteCanvas({
           className="absolute inset-0"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
         >
-          {/* SVG Connector Layer */}
-          <svg className="absolute inset-0 w-[2400px] h-[1600px] pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+          {/* SVG Connector Layer — infinite: covers 8000×6000 world so wires never clip */}
+          <svg className="absolute left-0 top-0 pointer-events-none z-0" style={{ width: 8000, height: 6000 }} xmlns="http://www.w3.org/2000/svg">
             <defs>
               <marker id="arrow-charcoal" markerWidth="6" markerHeight="6" orient="auto" refX="7" refY="5" viewBox="0 0 10 10">
                 <path d="M 0 1 L 9 5 L 0 9 z" fill="#52525b" />
@@ -596,15 +604,21 @@ export function InfiniteCanvas({
             {connectors.map((c, i) => {
               const fhw = c.from.isCentral ? 165 : 135;
               const thw = c.to.isCentral ? 165 : 135;
+              // Anchor at the visual edge-center of each sticky (more natural than top-center)
               const fx = c.from.canvasX + fhw;
               const fy = c.from.canvasY + 80;
               const tx = c.to.canvasX + thw;
               const ty = c.to.canvasY + 40;
+              const dx = Math.abs(tx - fx);
               const mx = (fx + tx) / 2;
+              // Softer, longer curves for far nodes; tighter for close nodes — avoids stiff wires
+              const offset = Math.min(180, Math.max(40, dx * 0.35));
+              const c1x = fx + (tx > fx ? offset : -offset);
+              const c2x = tx + (tx > fx ? -offset : offset);
               return (
                 <path
                   key={i}
-                  d={`M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`}
+                  d={`M ${fx} ${fy} C ${c1x} ${fy}, ${c2x} ${ty}, ${tx} ${ty}`}
                   fill="none"
                   filter={c.dashed ? "url(#glow)" : undefined}
                   markerEnd={`url(#${c.marker})`}
@@ -612,6 +626,8 @@ export function InfiniteCanvas({
                   strokeWidth={c.dashed ? 1.5 : 2}
                   strokeDasharray={c.dashed ? "6,4" : undefined}
                   strokeOpacity={c.color === "#9333ea" ? 0.7 : 1}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
               );
             })}
@@ -623,8 +639,8 @@ export function InfiniteCanvas({
             ))}
           </svg>
 
-          {/* Nodes */}
-          <div className="relative w-[2400px] h-[1600px] pl-20 pt-6">
+          {/* Nodes — infinite world 8000×6000, panned via transform on parent */}
+          <div className="relative" style={{ width: 8000, height: 6000, paddingLeft: 80, paddingTop: 24 }}>
             {filteredNodes.map((node) => {
               const isSelected = selectedId === node.id;
               const isEditing = editingId === node.id;
