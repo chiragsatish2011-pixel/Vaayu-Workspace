@@ -63,8 +63,19 @@ export function VoiceRecorder({
     onError?.(message);
   };
 
-  const start = async () => {
-    if (state !== "idle" || !supported) return;
+  const [showPermPopup, setShowPermPopup] = useState<null | "prompt" | "blocked">(null);
+
+  const getMicPermissionState = async (): Promise<"granted" | "denied" | "prompt"> => {
+    try {
+      if (navigator.permissions?.query) {
+        const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+        if (status.state === "granted" || status.state === "denied" || status.state === "prompt") return status.state;
+      }
+    } catch {}
+    return "prompt";
+  };
+
+  const requestMicAndStart = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = pickMimeType();
@@ -86,14 +97,29 @@ export function VoiceRecorder({
         setElapsed(s);
         if (s >= MAX_SECONDS) void stop(false);
       }, 500);
+      setShowPermPopup(null);
     } catch (err) {
       if (err instanceof DOMException && err.name === "NotAllowedError") {
-        fail("Microphone blocked — allow mic access in the browser, then try again.");
+        setShowPermPopup("blocked");
       } else if (err instanceof DOMException && err.name === "NotFoundError") {
         fail("No microphone found on this device.");
       } else {
         fail("Could not start recording.");
       }
+    }
+  };
+
+  const start = async () => {
+    if (state !== "idle" || !supported) return;
+    // Research: permission must be requested inside a user gesture (click). We show our
+    // own popup first, then the Allow button triggers the native getUserMedia prompt automatically.
+    const perm = await getMicPermissionState();
+    if (perm === "granted") {
+      await requestMicAndStart();
+    } else if (perm === "denied") {
+      setShowPermPopup("blocked");
+    } else {
+      setShowPermPopup("prompt");
     }
   };
 
@@ -190,18 +216,68 @@ export function VoiceRecorder({
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void start()}
-      aria-label="Record a voice note"
-      title="Record a voice note"
-      className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-hairline bg-canvas text-steel transition hover:border-ink hover:text-ink"
-    >
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-        <path d="M12 18v4" />
-      </svg>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => void start()}
+        aria-label="Record a voice note"
+        title="Record a voice note"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-hairline bg-canvas text-steel transition hover:border-ink hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <path d="M12 18v4" />
+        </svg>
+      </button>
+
+      {showPermPopup === "prompt" && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/40 p-4 backdrop-blur-[2px]" onClick={() => setShowPermPopup(null)} role="dialog" aria-modal="true" aria-label="Microphone permission">
+          <div className="w-full max-w-sm rounded-2xl bg-canvas p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-ink text-white">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                <path d="M12 18v4" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-center font-display text-lg font-bold text-ink">Allow microphone?</h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-steel">Vaayu needs mic access to record voice notes. Your audio stays in your Drive. Click Allow to open the browser permission.</p>
+            <div className="mt-6 flex gap-3">
+              <button type="button" onClick={() => setShowPermPopup(null)} className="flex-1 rounded-full border border-hairline py-2.5 text-sm font-semibold text-ink hover:bg-fog">Not now</button>
+              <button type="button" onClick={() => void requestMicAndStart()} className="flex-1 rounded-full bg-ink py-2.5 text-sm font-semibold text-white hover:bg-charcoal">Allow</button>
+            </div>
+            <p className="mt-3 text-center font-mono text-[11px] text-stone">You can change this anytime in browser site settings.</p>
+          </div>
+        </div>
+      )}
+
+      {showPermPopup === "blocked" && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/40 p-4 backdrop-blur-[2px]" onClick={() => setShowPermPopup(null)} role="dialog" aria-modal="true" aria-label="Microphone blocked">
+          <div className="w-full max-w-sm rounded-2xl bg-canvas p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-amber-100 text-amber-700">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-center font-display text-lg font-bold text-ink">Microphone blocked</h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-steel">Your browser is blocking the mic for this site. Enable it in site settings, then come back and try again.</p>
+            <div className="mt-4 rounded-xl bg-fog p-3 text-left">
+              <p className="font-mono text-xs font-semibold text-ink">How to fix</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-steel">
+                <li>Click the lock icon in the address bar → Site settings</li>
+                <li>Set Microphone to Allow</li>
+                <li>Reload and tap the mic again</li>
+              </ol>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button type="button" onClick={() => setShowPermPopup(null)} className="flex-1 rounded-full border border-hairline py-2.5 text-sm font-semibold text-ink hover:bg-fog">Close</button>
+              <button type="button" onClick={() => void requestMicAndStart()} className="flex-1 rounded-full bg-ink py-2.5 text-sm font-semibold text-white hover:bg-charcoal">Try again</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

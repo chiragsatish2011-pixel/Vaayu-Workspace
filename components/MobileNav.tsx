@@ -6,6 +6,7 @@ import { SECTIONS } from "@/components/sections";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Wordmark } from "@/components/Wordmark";
 import { CloseIcon, GearIcon, GridIcon, MenuIcon, ShieldIcon } from "@/components/icons";
+import { useWorkspaceUnread } from "@/components/WorkspaceUnreadProvider";
 
 /** Mobile slide-over nav (drawer under 1024px, per the collapsing strategy). */
 export function MobileNav({ active, role }: { active?: string; role?: string }) {
@@ -74,6 +75,14 @@ export function NavLinks({
   role?: string;
   onNavigate?: () => void;
 }) {
+  const { unread, markSeen } = useWorkspaceUnread();
+  const unreadFor = (href: string): { has: boolean; count?: number } | null => {
+    if (href === "/chat") return unread.chat.has ? unread.chat : null;
+    if (href === "/checkpoints") return unread.checkpoints.has ? unread.checkpoints : null;
+    if (href === "/projects") return unread.projects.has ? unread.projects : null;
+    if (href === "/files") return unread.files.has ? unread.files : null;
+    return null;
+  };
   const items = [
     {
       href: "/",
@@ -108,24 +117,41 @@ export function NavLinks({
     <ul className="flex flex-col gap-1">
       {items.map((item) => {
         const isActive = active === item.href;
+        const badge = unreadFor(item.href);
+        const showDot = !!badge?.has;
         return (
           <li key={item.href}>
             <Link
               href={item.href}
-              onClick={onNavigate}
+              onClick={() => {
+                onNavigate?.();
+                if (item.href === "/chat") markSeen("chat");
+                else if (item.href === "/checkpoints") markSeen("checkpoints");
+                else if (item.href === "/projects") markSeen("projects");
+                else if (item.href === "/files") markSeen("files");
+              }}
               className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-200 ${
                 isActive
                   ? "bg-fog font-medium text-ink"
-                  : "text-charcoal hover:bg-fog"
-              }`}
+                  : showDot
+                    ? "bg-amber-50 font-medium text-ink hover:bg-amber-100"
+                    : "text-charcoal hover:bg-fog"
+              } ${showDot && !isActive ? "ring-1 ring-amber-200" : ""}`}
             >
-              <span className="grid place-items-center text-steel transition-colors duration-200 group-hover:text-ink">
+              <span className="relative grid place-items-center text-steel transition-colors duration-200 group-hover:text-ink">
                 {item.icon}
+                {showDot && (
+                  <span className="absolute -right-1 -top-1 grid h-2.5 w-2.5 place-items-center rounded-full bg-amber-500 ring-2 ring-white">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  </span>
+                )}
               </span>
               <span className="flex-1">{item.label}</span>
-              {isActive && (
-                <span className="h-4 w-1 rounded-full bg-ink" aria-hidden />
+              {showDot && badge?.count !== undefined && badge.count > 0 && (
+                <span className="grid min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 py-0.5 font-mono text-[11px] font-bold text-white">{badge.count > 99 ? "99+" : badge.count}</span>
               )}
+              {showDot && !badge?.count && <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" aria-label="New" />}
+              {isActive && <span className="h-4 w-1 rounded-full bg-ink" aria-hidden />}
             </Link>
           </li>
         );

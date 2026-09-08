@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserAvatar } from "@/components/UserAvatar";
+import { GroupAvatarCollage, UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { formatDateTime } from "@/lib/format";
-import { TiptapEditor, renderTiptapJsonToReact } from "@/components/mentions/TiptapEditor";
+import { TiptapEditor, extractPlainTextFromTiptap, renderTiptapJsonToReact } from "@/components/mentions/TiptapEditor";
+import { getChatAppEnabled, triggerChatNotification } from "@/lib/chatNotifications";
+import { markPanelSeen } from "@/lib/workspaceUnread";
 
 /* ── Types (mirror the scoped API JSON) ─────────────────────────────── */
 
@@ -23,12 +25,60 @@ export interface ChatMessage {
   avatarDriveId?: string | null;
 }
 
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  userIds: string[];
+  mine: boolean;
+}
+
+export interface ReplyRef {
+  id: string;
+  author: string;
+  snippet: string;
+}
+
+export const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
+
+/** Reply snapshot + soft-delete flag live inside contentJson — zero schema change. */
+export function msgMeta(m: ChatMessage): { reply: ReplyRef | null; deleted: boolean } {
+  if (!m.contentJson) return { reply: null, deleted: false };
+  try {
+    const j = JSON.parse(m.contentJson) as { reply?: unknown; deleted?: unknown };
+    const r = (j?.reply ?? null) as { id?: unknown; author?: unknown; snippet?: unknown } | null;
+    return {
+      reply:
+        r && typeof r.id === "string"
+          ? { id: r.id, author: String(r.author ?? "Someone"), snippet: String(r.snippet ?? "").slice(0, 140) }
+          : null,
+      deleted: (j as { deleted?: unknown })?.deleted === true,
+    };
+  } catch {
+    return { reply: null, deleted: false };
+  }
+}
+
+export function withReply(json: unknown, reply: ReplyRef | null): unknown {
+  if (!reply) return json;
+  if (json && typeof json === "object" && !Array.isArray(json)) {
+    return { ...(json as Record<string, unknown>), reply };
+  }
+  return { type: "doc", reply };
+}
+
+export function isEdited(m: ChatMessage): boolean {
+  const c = Date.parse(m.createdAt);
+  const u = Date.parse(m.updatedAt);
+  return !Number.isNaN(c) && !Number.isNaN(u) && u > c + 2000;
+}
+
 interface ConvoMember {
   userId: string;
   email: string;
   displayName: string | null;
   avatarDriveId: string | null;
   joinedAt: string;
+  lastReadAt: string | null;
 }
 
 interface ConvoLastMessage {
@@ -60,6 +110,8 @@ interface DirectoryUser {
 
 interface ChatManagerProps {
   currentUser: { id: string; email: string; displayName?: string | null };
+  /** Viewer role — admins may delete any message. */
+  userRole?: "admin" | "member";
   /** Deep link: preselect this conversation once the list loads (?c=). */
   initialConversationId?: string | null;
 }
@@ -104,11 +156,58 @@ function sortByActivity(list: Convo[]): Convo[] {
   });
 }
 
+function getReceiptStatus(message: ChatMessage, convo: Convo | null, onlineUserIds: Set<string>, selfId: string): "sent" | "delivered" | "seen" | null {
+  if (!convo || message.userId !== selfId) return null;
+  const others = convo.members.filter((m) => m.userId !== selfId);
+  if (others.length === 0) return "sent";
+  const msgTime = new Date(message.createdAt).getTime();
+  const seenCount = others.filter((m) => m.lastReadAt && new Date(m.lastReadAt).getTime() >= msgTime).length;
+  if (seenCount === others.length) return "seen";
+  const anyOnline = others.some((m) => onlineUserIds.has(m.userId));
+  if (anyOnline || seenCount > 0) return "delivered";
+  return "sent";
+}
+
+function ReceiptTicks({ status }: { status: "sent" | "delivered" | "seen" }) {
+  if (status === "sent") {
+    return (
+      <span className="inline-flex text-white/70" aria-label="Sent">
+        <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 8l4 4L14 2" />
+        </svg>
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="inline-flex gap-[1px] text-white/70" aria-label="Delivered">
+        <svg viewBox="0 0 16 16" className="h-3 w-3 -mr-1" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 8l4 4L14 2" />
+        </svg>
+        <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 8l4 4L14 2" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex gap-[1px] text-sky-300" aria-label="Seen">
+      <svg viewBox="0 0 16 16" className="h-3 w-3 -mr-1" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 8l4 4L14 2" />
+      </svg>
+      <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 8l4 4L14 2" />
+      </svg>
+    </span>
+  );
+}
+
 /* ── Component ──────────────────────────────────────────────────────── */
 
-export function ChatManager({ currentUser, initialConversationId }: ChatManagerProps) {
+export function ChatManager({ currentUser, userRole, initialConversationId }: ChatManagerProps) {
   const router = useRouter();
   const selfId = currentUser.id;
+  const isAdmin = userRole === "admin";
   const deepLinkRef = useRef<string | null>(initialConversationId ?? null);
 
   const [convos, setConvos] = useState<Convo[]>([]);
@@ -134,6 +233,21 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
 
+  // Message power tools
+  const [reactions, setReactions] = useState<Record<string, Record<string, ReactionSummary[]>>>({});
+  const [watermarks, setWatermarks] = useState<Record<string, Array<{ userId: string; lastReadAt: string | null }>>>({});
+  const [replyTo, setReplyTo] = useState<ReplyRef | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ text: string; json: unknown } | null>(null);
+  const [editKey, setEditKey] = useState(0);
+  const [reactPickerFor, setReactPickerFor] = useState<string | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
+  const [forwarding, setForwarding] = useState(false);
+  const [threadSearch, setThreadSearch] = useState("");
+  const [showThreadSearch, setShowThreadSearch] = useState(false);
+
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
   const listRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const lastTypingSent = useRef<Record<string, number>>({});
@@ -158,6 +272,29 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
   useEffect(() => {
     void fetchConvos();
   }, [fetchConvos]);
+
+  // Presence: who is online (for WhatsApp-style green dots)
+  useEffect(() => {
+    const fetchPresence = async () => {
+      try {
+        const res = await fetch("/api/chat/presence", { cache: "no-store" });
+        const data = await res.json().catch(() => null);
+        if (res.ok && Array.isArray(data?.onlineUserIds)) {
+          setOnlineUserIds(new Set(data.onlineUserIds as string[]));
+        }
+      } catch {}
+    };
+    void fetchPresence();
+    const iv = setInterval(fetchPresence, 30000);
+    const onFocus = () => void fetchPresence();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("visibilitychange", onFocus);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("visibilitychange", onFocus);
+    };
+  }, []);
 
   /* ── Thread loading ── */
 
@@ -187,8 +324,43 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
     }
   }, []);
 
-  const markRead = useCallback(async (conversationId: string) => {
-    setConvos((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c)));
+  const replaceThreadMessage = useCallback((conversationId: string, message: ChatMessage) => {
+    setThreads((prev) => {
+      const thread = prev[conversationId];
+      if (!thread) return prev;
+      return { ...prev, [conversationId]: { ...thread, messages: thread.messages.map((m) => (m.id === message.id ? message : m)) } };
+    });
+    // Keep the sidebar preview in sync when the latest message changes.
+    setConvos((prev) =>
+      prev.map((c) =>
+        c.id === conversationId && c.lastMessage?.id === message.id
+          ? { ...c, lastMessage: { ...c.lastMessage, content: message.content } }
+          : c
+      )
+    );
+  }, []);
+
+  const loadReactions = useCallback(async (conversationId: string) => {
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/reactions`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.reactions) setReactions((prev) => ({ ...prev, [conversationId]: data.reactions }));
+    } catch {
+      // Reactions are enhancement-only; the thread works without them.
+    }
+  }, []);
+
+  const loadReadState = useCallback(async (conversationId: string) => {
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/read-state`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.watermarks)) setWatermarks((prev) => ({ ...prev, [conversationId]: data.watermarks }));
+    } catch {
+      // Ticks degrade gracefully when read state is unavailable.
+    }
+  }, []);
+
+  const markRead = useCallback(async (conversationId: string) => {    setConvos((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c)));
     try {
       await fetch(`/api/chat/conversations/${conversationId}/read`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     } catch {
@@ -203,13 +375,26 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
       setDraft(null);
       setEditorKey((k) => k + 1);
       setAutoScroll(true);
+      setReplyTo(null);
+      setEditingMsgId(null);
+      setEditDraft(null);
+      setReactPickerFor(null);
+      setForwardMsg(null);
+      setThreadSearch("");
+      setShowThreadSearch(false);
       if (id) {
+        // Mark chat panel as seen workspace-wide
+        try {
+          markPanelSeen("chat");
+        } catch {}
         setThreads((prev) => (prev[id] ? prev : { ...prev, [id]: { messages: [], hasMore: true, loading: true } }));
         void loadThread(id);
         void markRead(id);
+        void loadReactions(id);
+        void loadReadState(id);
       }
     },
-    [loadThread, markRead]
+    [loadThread, markRead, loadReactions, loadReadState]
   );
 
   // Deep link (?c=): preselect once the list arrives, then forget it.
@@ -272,6 +457,29 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
         const { conversationId, message } = data;
         if (!conversationId || !message) return;
         upsertConvoPreview(conversationId, message);
+        // Browser + in-app notification if not viewing this conversation
+        if (message.userId !== selfId) {
+          const isViewing = selectedIdRef.current === conversationId && document.visibilityState === "visible" && !document.hidden;
+          if (!isViewing && getChatAppEnabled()) {
+            const preview = message.contentJson
+              ? (() => {
+                  try {
+                    const j = JSON.parse(message.contentJson!);
+                    const t = (j?.content || []).map((p: any) => (p.content || []).map((c: any) => c.text || (c.type === "mention" ? `@${c.attrs?.label}` : "")).join("")).join(" ");
+                    return t.slice(0, 80);
+                  } catch {
+                    return message.content.slice(0, 80);
+                  }
+                })()
+              : message.content.slice(0, 80);
+            triggerChatNotification({
+              title: `New message from ${message.displayName || message.userEmail}`,
+              body: preview || "New message",
+              tag: `chat-${conversationId}`,
+            });
+            window.dispatchEvent(new CustomEvent("vaayu:chat-unread", { detail: { conversationId } }));
+          }
+        }
         if (selectedIdRef.current === conversationId) {
           setThreads((prev) => {
             const thread = prev[conversationId] ?? { messages: [], hasMore: false, loading: false };
@@ -286,6 +494,50 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
     }) as EventListener);
 
     const refreshList = () => void fetchConvos();
+    es.addEventListener("message.updated", ((ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { conversationId: string; message: ChatMessage };
+        if (data?.conversationId && data?.message) replaceThreadMessage(data.conversationId, data.message);
+      } catch {
+        // ignore malformed push
+      }
+    }) as EventListener);
+    es.addEventListener("message.deleted", ((ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { conversationId: string; message: ChatMessage };
+        if (data?.conversationId && data?.message) replaceThreadMessage(data.conversationId, data.message);
+      } catch {
+        // ignore malformed push
+      }
+    }) as EventListener);
+    es.addEventListener("message.reacted", ((ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { conversationId: string; messageId: string; reactions: ReactionSummary[] };
+        if (!data?.conversationId || !data?.messageId || !Array.isArray(data?.reactions)) return;
+        setReactions((prev) => ({
+          ...prev,
+          [data.conversationId]: { ...(prev[data.conversationId] ?? {}), [data.messageId]: data.reactions },
+        }));
+      } catch {
+        // ignore malformed push
+      }
+    }) as EventListener);
+    es.addEventListener("conversation.read", ((ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { conversationId: string; userId: string; lastReadAt: string };
+        if (!data?.conversationId || !data?.userId) return;
+        setWatermarks((prev) => {
+          const list = prev[data.conversationId] ?? [];
+          const found = list.some((w) => w.userId === data.userId);
+          const next = found
+            ? list.map((w) => (w.userId === data.userId ? { ...w, lastReadAt: data.lastReadAt } : w))
+            : [...list, { userId: data.userId, lastReadAt: data.lastReadAt }];
+          return { ...prev, [data.conversationId]: next };
+        });
+      } catch {
+        // ignore malformed push
+      }
+    }) as EventListener);
     es.addEventListener("conversation.created", refreshList as EventListener);
     es.addEventListener("members.added", ((ev: MessageEvent) => {
       try {
@@ -353,7 +605,7 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
       es.close();
       Object.values(typingTimers.current).forEach(clearTimeout);
     };
-  }, [fetchConvos, loadThread, markRead, selfId]);
+  }, [fetchConvos, loadThread, markRead, replaceThreadMessage, selfId]);
 
   /* ── Autoscroll ── */
 
@@ -393,13 +645,14 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
     const text = payload?.text?.trim() ?? draft?.text?.trim() ?? "";
     const json = payload?.json ?? draft?.json ?? null;
     if (!text || sending) return;
+    const reply = replyTo;
     setSending(true);
     setThreadError(null);
     try {
       const res = await fetch(`/api/chat/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text, contentJson: json ? JSON.stringify(json) : null }),
+        body: JSON.stringify({ content: text, contentJson: json ? JSON.stringify(withReply(json, reply)) : reply ? JSON.stringify({ type: "doc", reply }) : null }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Failed to send.");
@@ -426,6 +679,7 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
       );
       setDraft(null);
       setEditorKey((k) => k + 1);
+      setReplyTo(null);
       sendTyping(conversationId, false);
       setAutoScroll(true);
     } catch (e) {
@@ -435,8 +689,165 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
     }
   };
 
-  const handleMentionClick = (type: string, id: string) => {
-    if (type === "person") router.push("/admin");
+  /* ── Message power tools ── */
+
+  const msgSnippet = (m: ChatMessage): string => {
+    const oneLine = (m.content || "").replace(/\s+/g, " ").trim();
+    return oneLine.length > 120 ? `${oneLine.slice(0, 120)}…` : oneLine || "Attachment";
+  };
+
+  const startReply = (m: ChatMessage) => {
+    setReplyTo({ id: m.id, author: getDisplayName(m.displayName, m.userEmail), snippet: msgSnippet(m) });
+    setReactPickerFor(null);
+  };
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId) return;
+    setReactPickerFor(null);
+    // Optimistic toggle — reconciled by the POST response / SSE.
+    setReactions((prev) => {
+      const convo = { ...(prev[conversationId] ?? {}) };
+      const list = [...(convo[messageId] ?? [])];
+      const mineIdx = list.findIndex((r) => r.mine);
+      if (mineIdx >= 0 && list[mineIdx]?.emoji === emoji) {
+        const cur = { ...list[mineIdx]!, userIds: list[mineIdx]!.userIds.filter((u) => u !== selfId), count: list[mineIdx]!.count - 1 };
+        if (cur.count <= 0) list.splice(mineIdx, 1);
+        else list[mineIdx] = cur;
+      } else {
+        if (mineIdx >= 0) {
+          const cur = { ...list[mineIdx]!, userIds: list[mineIdx]!.userIds.filter((u) => u !== selfId), count: list[mineIdx]!.count - 1 };
+          if (cur.count <= 0) list.splice(mineIdx, 1);
+          else list[mineIdx] = cur;
+        }
+        const at = list.findIndex((r) => r.emoji === emoji);
+        if (at >= 0) list[at] = { ...list[at]!, userIds: [...list[at]!.userIds, selfId], count: list[at]!.count + 1, mine: true };
+        else list.push({ emoji, count: 1, userIds: [selfId], mine: true });
+      }
+      convo[messageId] = list;
+      return { ...prev, [conversationId]: convo };
+    });
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${messageId}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.reactions)) {
+        setReactions((prev) => ({ ...prev, [conversationId]: { ...(prev[conversationId] ?? {}), [messageId]: data.reactions } }));
+      } else {
+        void loadReactions(conversationId);
+      }
+    } catch {
+      void loadReactions(conversationId);
+    }
+  };
+
+  const startEdit = (m: ChatMessage) => {
+    setEditingMsgId(m.id);
+    setReactPickerFor(null);
+    if (m.contentJson) {
+      try {
+        const parsed = JSON.parse(m.contentJson);
+        setEditDraft({ text: extractPlainTextFromTiptap(parsed) || m.content, json: parsed });
+      } catch {
+        setEditDraft({ text: m.content, json: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: m.content }] }] } });
+      }
+    } else {
+      setEditDraft({ text: m.content, json: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: m.content }] }] } });
+    }
+    setEditKey((k) => k + 1);
+    setThreadError(null);
+  };
+
+  const saveEdit = async (m: ChatMessage) => {
+    const conversationId = selectedIdRef.current;
+    const text = editDraft?.text?.trim() ?? "";
+    const json = editDraft?.json ?? null;
+    if (!text || !conversationId) return;
+    setThreadError(null);
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${m.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text, contentJson: json ? JSON.stringify(json) : null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not save edit.");
+      replaceThreadMessage(conversationId, data.message as ChatMessage);
+      setEditingMsgId(null);
+      setEditDraft(null);
+    } catch (e) {
+      setThreadError(e instanceof Error ? e.message : "Could not save edit.");
+    }
+  };
+
+  const deleteMessage = async (m: ChatMessage) => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId) return;
+    if (!window.confirm("Delete this message for everyone?")) return;
+    setReactPickerFor(null);
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${m.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not delete message.");
+      replaceThreadMessage(conversationId, data.message as ChatMessage);
+    } catch (e) {
+      setThreadError(e instanceof Error ? e.message : "Could not delete message.");
+    }
+  };
+
+  const forwardMessage = async (targetId: string) => {
+    const m = forwardMsg;
+    if (!m || forwarding) return;
+    setForwarding(true);
+    setThreadError(null);
+    try {
+      const res = await fetch(`/api/chat/conversations/${targetId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: m.content, contentJson: m.contentJson ?? null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not forward message.");
+      setForwardMsg(null);
+      void fetchConvos();
+      if (targetId === selectedIdRef.current && data?.message) {
+        const msg = data.message as ChatMessage;
+        setThreads((prev) => {
+          const thread = prev[targetId] ?? { messages: [], hasMore: false, loading: false };
+          if (thread.messages.some((x) => x.id === msg.id)) return prev;
+          return { ...prev, [targetId]: { ...thread, messages: [...thread.messages, msg] } };
+        });
+        setAutoScroll(true);
+      }
+    } catch (e) {
+      setThreadError(e instanceof Error ? e.message : "Could not forward message.");
+    } finally {
+      setForwarding(false);
+    }
+  };
+
+  const copyMessage = async (m: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(m.content);
+    } catch {
+      // Clipboard unavailable — selection copy still works.
+    }
+    setReactPickerFor(null);
+  };
+
+  const isMsgReadByOthers = (m: ChatMessage): boolean => {
+    if (m.userId !== selfId || !selectedId) return false;
+    const list = watermarks[selectedId] ?? [];
+    const others = list.filter((w) => w.userId !== selfId);
+    if (others.length === 0) return false;
+    const t = Date.parse(m.createdAt);
+    return others.every((w) => w.lastReadAt && Date.parse(w.lastReadAt) >= t);
+  };
+
+  const handleMentionClick = (type: string, id: string) => {    if (type === "person") router.push("/admin");
     else if (type === "project") router.push("/projects");
     else if (type === "file" || type === "folder") router.push(`/files?highlight=${encodeURIComponent(id)}`);
     else if (type === "checkpoint") router.push(`/checkpoints#${encodeURIComponent(id)}`);
@@ -541,29 +952,27 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
                     <button
                       type="button"
                       onClick={() => selectConversation(c.id)}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${isActive ? "bg-fog" : "hover:bg-fog/70"}`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                        isActive ? "bg-fog" : c.unreadCount > 0 ? "bg-violet-50 hover:bg-violet-100 ring-1 ring-violet-200" : "hover:bg-fog/70"
+                      }`}
                     >
                       {c.type === "group" ? (
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet/15 text-violet" aria-hidden>
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                          </svg>
-                        </span>
+                        <GroupAvatarCollage members={c.members} size={44} />
                       ) : (
-                        <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={44} />
+                        <span className="relative shrink-0">
+                          <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={44} />
+                          {o && onlineUserIds.has(o.userId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" aria-label="Online" />}
+                        </span>
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-sm font-semibold text-ink">{title}</span>
+                          <span className={`truncate text-sm ${c.unreadCount > 0 ? "font-bold text-ink" : "font-semibold text-ink"}`}>{title}</span>
                           <span className={`shrink-0 font-mono text-[11px] ${c.unreadCount > 0 ? "font-bold text-violet" : "text-stone"}`}>
                             {listTime(c.lastMessage?.createdAt ?? c.updatedAt)}
                           </span>
                         </span>
                         <span className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-steel">
+                          <span className={`min-w-0 flex-1 truncate text-[13px] ${c.unreadCount > 0 ? "font-medium text-ink" : "text-steel"}`}>
                             {c.type === "group" && c.lastMessage ? `${getDisplayName(c.lastMessage.displayName, c.lastMessage.userEmail)}: ` : ""}
                             {c.lastMessage ? previewText(c.lastMessage.content) : c.type === "group" ? `${c.members.length} members` : "Say hi 👋"}
                           </span>
@@ -606,15 +1015,17 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
               </button>
               {selected.type === "group" ? (
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet/15 text-violet" aria-hidden>
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </span>
+                <GroupAvatarCollage members={selected.members} size={40} />
               ) : (
                 (() => {
                   const o = otherMember(selected, selfId);
-                  return <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={40} />;
+                  const isOnline = o ? onlineUserIds.has(o.userId) : false;
+                  return (
+                    <span className="relative shrink-0">
+                      <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={40} />
+                      {isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" aria-label="Online" />}
+                    </span>
+                  );
                 })()
               )}
               <button
@@ -628,8 +1039,13 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
                   {typingHere.length > 0
                     ? `${typingHere.map((t) => getDisplayName(t.displayName, null)).join(", ")} typing…`
                     : selected.type === "group"
-                      ? `${selected.members.length} members — tap for info`
-                      : (otherMember(selected, selfId)?.email ?? "")}
+                      ? `${selected.members.filter((m) => onlineUserIds.has(m.userId)).length} online · ${selected.members.length} members — tap for info`
+                      : (() => {
+                          const o = otherMember(selected, selfId);
+                          if (!o) return "";
+                          const isOnline = onlineUserIds.has(o.userId);
+                          return isOnline ? "online" : "offline";
+                        })()}
                 </span>
               </button>
               {selected.type === "group" && (
@@ -676,27 +1092,149 @@ export function ChatManager({ currentUser, initialConversationId }: ChatManagerP
                       )}
                       {thread?.messages.map((m) => {
                         const isOwn = m.userId === selfId;
+                        const meta = msgMeta(m);
+                        const msgReactions = (selectedId && reactions[selectedId]?.[m.id]) || [];
+                        const canEdit = isOwn && !meta.deleted;
+                        const canDelete = (isOwn || isAdmin) && !meta.deleted;
+                        const read = isOwn && !meta.deleted && isMsgReadByOthers(m);
+                        const isEditing = editingMsgId === m.id;
                         return (
-                          <div key={m.id} className={`flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
+                          <div key={m.id} id={`msg-${m.id}`} className={`group flex gap-3 scroll-mt-4 ${isOwn ? "flex-row-reverse" : ""}`}>
                             <UserAvatar displayName={m.displayName} email={m.userEmail} userId={m.userId} avatarDriveId={m.avatarDriveId} size={32} />
                             <div className={`flex max-w-[75%] flex-col ${isOwn ? "items-end" : "items-start"}`}>
                               <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
                                 <span className="text-sm font-semibold text-ink">{getDisplayName(m.displayName, m.userEmail)}</span>
                                 <span className="font-mono text-[11px] text-stone">{formatDateTime(m.createdAt)}</span>
-                              </div>
-                              <div className={`mt-1 whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${isOwn ? "bg-ink text-white" : "border border-hairline bg-fog text-ink"}`}>
-                                {m.contentJson ? (
-                                  (() => {
-                                    try {
-                                      return renderTiptapJsonToReact(JSON.parse(m.contentJson), handleMentionClick) || m.content;
-                                    } catch {
-                                      return m.content;
-                                    }
-                                  })()
-                                ) : (
-                                  m.content
+                                {isOwn && !meta.deleted && (
+                                  <span title={read ? "Read" : "Sent"} className={`font-mono text-[11px] ${read ? "text-violet" : "text-stone"}`}>
+                                    {read ? "✓✓" : "✓"}
+                                  </span>
                                 )}
+                                {isEdited(m) && !meta.deleted && <span className="font-mono text-[10px] text-stone">(edited)</span>}
                               </div>
+                              {meta.deleted ? (
+                                <div className="mt-1 rounded-2xl border border-dashed border-hairline px-3.5 py-2.5 text-sm italic text-stone">
+                                  🚫 This message was deleted
+                                </div>
+                              ) : isEditing ? (
+                                <div className="mt-1 w-full min-w-[240px]">
+                                  <TiptapEditor
+                                    key={`edit-${m.id}-${editKey}`}
+                                    placeholder="Edit message…"
+                                    initialContentJson={m.contentJson ?? null}
+                                    initialText={!m.contentJson ? m.content : undefined}
+                                    onChange={setEditDraft}
+                                    onSubmit={(c) => {
+                                      setEditDraft(c);
+                                      setTimeout(() => saveEdit(m), 0);
+                                    }}
+                                  />
+                                  <div className="mt-1.5 flex justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingMsgId(null);
+                                        setEditDraft(null);
+                                      }}
+                                      className="rounded-full border border-hairline px-3 py-1 text-[11px] font-semibold text-steel hover:border-ink hover:text-ink"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveEdit(m)}
+                                      disabled={!editDraft?.text?.trim()}
+                                      className="rounded-full bg-ink px-3 py-1 text-[11px] font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={`mt-1 whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${isOwn ? "bg-ink text-white" : "border border-hairline bg-fog text-ink"}`}>
+                                  {meta.reply && (
+                                    <button
+                                      type="button"
+                                      onClick={() => document.getElementById(`msg-${meta.reply!.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                                      title="Jump to quoted message"
+                                      className={`mb-1.5 block w-full min-w-0 truncate rounded-lg border-l-2 px-2 py-1 text-left text-xs ${isOwn ? "border-white/40 bg-white/10 text-white/85" : "border-violet/50 bg-white text-steel"}`}
+                                    >
+                                      <span className={`block truncate font-semibold ${isOwn ? "text-white" : "text-violet"}`}>{meta.reply.author}</span>
+                                      <span className="block truncate">{meta.reply.snippet}</span>
+                                    </button>
+                                  )}
+                                  {m.contentJson ? (
+                                    (() => {
+                                      try {
+                                        return renderTiptapJsonToReact(JSON.parse(m.contentJson), handleMentionClick) || m.content;
+                                      } catch {
+                                        return m.content;
+                                      }
+                                    })()
+                                  ) : (
+                                    m.content
+                                  )}
+                                </div>
+                              )}
+                              {msgReactions.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {msgReactions.map((r) => (
+                                    <button
+                                      key={r.emoji}
+                                      type="button"
+                                      onClick={() => void toggleReaction(m.id, r.emoji)}
+                                      title={r.mine ? "Tap to remove your reaction" : "Tap to react"}
+                                      className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition ${
+                                        r.mine ? "border-violet/50 bg-violet/10" : "border-hairline bg-canvas hover:border-steel"
+                                      }`}
+                                    >
+                                      <span>{r.emoji}</span>
+                                      <span className="font-mono text-[10px] font-semibold text-steel">{r.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {!meta.deleted && !isEditing && (
+                                <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                                  <button type="button" onClick={() => startReply(m)} title="Reply" className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-fog hover:text-ink">Reply</button>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setReactPickerFor((id) => (id === m.id ? null : m.id))}
+                                      title="React"
+                                      className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-fog hover:text-ink"
+                                    >
+                                      React
+                                    </button>
+                                    {reactPickerFor === m.id && (
+                                      <>
+                                        <div className="fixed inset-0 z-40" onMouseDown={() => setReactPickerFor(null)} />
+                                        <div className="absolute bottom-full z-50 mb-1 flex gap-0.5 rounded-full border border-hairline bg-canvas p-1 shadow-xl">
+                                          {REACTION_EMOJIS.map((e) => (
+                                            <button
+                                              key={e}
+                                              type="button"
+                                              onMouseDown={(ev) => ev.preventDefault()}
+                                              onClick={() => void toggleReaction(m.id, e)}
+                                              className="rounded-full px-1.5 py-0.5 text-lg transition hover:scale-125"
+                                            >
+                                              {e}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                  {canEdit && (
+                                    <button type="button" onClick={() => startEdit(m)} title="Edit" className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-fog hover:text-ink">Edit</button>
+                                  )}
+                                  {canDelete && (
+                                    <button type="button" onClick={() => void deleteMessage(m)} title="Delete" className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-error-bg hover:text-error">Delete</button>
+                                  )}
+                                  <button type="button" onClick={() => setForwardMsg(m)} title="Forward" className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-fog hover:text-ink">Forward</button>
+                                  <button type="button" onClick={() => void copyMessage(m)} title="Copy text" className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-steel hover:bg-fog hover:text-ink">Copy</button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

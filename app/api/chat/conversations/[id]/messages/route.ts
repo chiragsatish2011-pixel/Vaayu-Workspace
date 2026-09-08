@@ -5,6 +5,7 @@ import { chatMessages, conversations, users } from "@/db/schema";
 import { requireApiSession } from "@/lib/session";
 import { isParticipant } from "@/lib/chat-access";
 import { publishToConversation } from "@/lib/chat-bus";
+import { getArchivedMessages } from "@/lib/chat-archive-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       conditions.push(lt(chatMessages.createdAt, before));
     }
 
+    // Neon recent messages
     const rows = await db
       .select({
         id: chatMessages.id,
@@ -81,8 +83,48 @@ export async function GET(req: Request, ctx: RouteCtx) {
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
 
-    const messages = rows.map(enrichedMessage).reverse(); // oldest first
-    return NextResponse.json({ messages, hasMore: rows.length === limit });
+    // Archived messages from Sheets (older than 24h, moved to keep Neon free)
+    let archived: ReturnType<typeof enrichedMessage>[] = [];
+    try {
+      const archivedRows = await getArchivedMessages(conversationId);
+      let filtered = archivedRows;
+      if (before) {
+        filtered = filtered.filter((r) => new Date(r.createdAt) < before);
+      }
+      // Map to same shape as enrichedMessage
+      archived = filtered.map((r) =>
+        enrichedMessage({
+          id: r.id,
+          conversationId: r.conversationId,
+          content: r.content,
+          contentJson: r.contentJson,
+          createdAt: new Date(r.createdAt),
+          updatedAt: new Date(r.updatedAt),
+          userId: r.userId,
+          userEmail: r.userEmail,
+          userRole: r.userRole,
+          displayName: r.displayName,
+          avatarDriveId: r.avatarDriveId,
+        })
+      );
+    } catch {
+      // Sheets not configured or empty — ignore, Neon is source of truth
+    }
+
+    // Merge Neon + Sheets, sort by createdAt desc, apply limit, then reverse to oldest first
+    const mergedDesc = [...rows.map(enrichedMessage), ...archived].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Dedupe by id (in case a message was just archived but still in Neon briefly)
+    const seen = new Set<string>();
+    const deduped: typeof mergedDesc = [];
+    for (const m of mergedDesc) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      deduped.push(m);
+      if (deduped.length >= limit) break;
+    }
+    const messages = deduped.reverse(); // oldest first for UI
+    const hasMore = deduped.length === limit || rows.length === limit;
+    return NextResponse.json({ messages, hasMore });
   } catch (err) {
     console.error("[GET /api/chat/conversations/:id/messages]", err);
     return NextResponse.json({ error: "Failed to fetch messages." }, { status: 500 });

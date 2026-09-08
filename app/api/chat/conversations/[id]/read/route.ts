@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { conversationParticipants } from "@/db/schema";
 import { requireApiSession } from "@/lib/session";
 import { isParticipant } from "@/lib/chat-access";
+import { publishToConversation } from "@/lib/chat-bus";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
           eq(conversationParticipants.userId, user.id)
         )
       );
+
+    publishToConversation(conversationId, {
+      type: "conversation.read",
+      data: { userId: user.id, lastReadAt: next.toISOString() },
+    });
 
     return NextResponse.json({ lastReadAt: next.toISOString() });
   } catch (err) {

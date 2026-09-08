@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { getDriveAccessToken, uploadDriveFile, validateUpload } from "@/lib/drive";
+import { ensureSubfolderPath, getDriveAccessToken, isValidDriveFileId, trashDriveFile, uploadDriveFile, validateUpload } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
 import { requireApiSession } from "@/lib/session";
 
@@ -38,14 +38,25 @@ export async function POST(req: Request) {
   try {
     const drive = assertDriveEnv();
     const token = await getDriveAccessToken(drive.clientId, drive.clientSecret, drive.refreshToken);
+    // Store avatars in a dedicated subfolder so they never clutter the main file browser
+    const { parentFolderId: avatarsFolderId } = await ensureSubfolderPath(token, drive.folderId, ["avatars"]);
     const bytes = new Blob([await file.arrayBuffer()], { type: file.type });
+    // Fetch old avatar to clean up after successful upload
+    const oldRows = await db.select({ avatarDriveId: users.avatarDriveId }).from(users).where(eq(users.id, caller.id)).limit(1);
+    const oldAvatarId = oldRows[0]?.avatarDriveId ?? null;
     const uploaded = await uploadDriveFile(token, {
       name: `avatar-${caller.id}-${Date.now()}-${checked.name}`,
       mimeType: file.type,
       bytes,
-      folderId: drive.folderId,
+      folderId: avatarsFolderId,
     });
     await db.update(users).set({ avatarDriveId: uploaded.id, avatarFileName: uploaded.name }).where(eq(users.id, caller.id));
+    // Clean up old avatar file (best-effort, don't fail the request if it errors)
+    if (oldAvatarId && isValidDriveFileId(oldAvatarId) && oldAvatarId !== uploaded.id) {
+      try {
+        await trashDriveFile(token, oldAvatarId);
+      } catch {}
+    }
     return NextResponse.json({ ok: true, avatarDriveId: uploaded.id });
   } catch (err) {
     console.error("[api/user/avatar]", err);
@@ -57,7 +68,16 @@ export async function DELETE() {
   const caller = await requireApiSession();
   if (!caller) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   try {
+    const rows = await db.select({ avatarDriveId: users.avatarDriveId }).from(users).where(eq(users.id, caller.id)).limit(1);
+    const oldId = rows[0]?.avatarDriveId ?? null;
     await db.update(users).set({ avatarDriveId: null, avatarFileName: null }).where(eq(users.id, caller.id));
+    if (oldId && isValidDriveFileId(oldId)) {
+      try {
+        const drive = assertDriveEnv();
+        const token = await getDriveAccessToken(drive.clientId, drive.clientSecret, drive.refreshToken);
+        await trashDriveFile(token, oldId);
+      } catch {}
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[api/user/avatar] delete", err);

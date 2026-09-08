@@ -275,6 +275,14 @@ export async function runBootstrap(
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );`,
+      `CREATE TABLE IF NOT EXISTS "message_reactions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"message_id" uuid NOT NULL REFERENCES "public"."chat_messages"("id") ON DELETE cascade,
+	"user_id" uuid NOT NULL REFERENCES "public"."users"("id") ON DELETE cascade,
+	"emoji" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "message_reactions_message_user_unique" ON "message_reactions" ("message_id", "user_id")`,
       `CREATE INDEX IF NOT EXISTS "projects_user_id_idx" ON "projects" ("user_id")`,
       `CREATE INDEX IF NOT EXISTS "projects_created_at_idx" ON "projects" ("created_at" DESC)`,
       `CREATE INDEX IF NOT EXISTS "chat_messages_user_id_idx" ON "chat_messages" ("user_id")`,

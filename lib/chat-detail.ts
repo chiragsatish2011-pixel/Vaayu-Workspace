@@ -14,6 +14,7 @@ export interface ConversationMember {
   displayName: string | null;
   avatarDriveId: string | null;
   joinedAt: string;
+  lastReadAt: string | null;
 }
 
 export interface ConversationDetail {
@@ -61,6 +62,7 @@ export async function getConversationDetail(
       displayName: users.displayName,
       avatarDriveId: users.avatarDriveId,
       joinedAt: conversationParticipants.joinedAt,
+      lastReadAt: conversationParticipants.lastReadAt,
     })
     .from(conversationParticipants)
     .innerJoin(users, eq(conversationParticipants.userId, users.id))
@@ -123,6 +125,7 @@ export async function getConversationDetail(
       displayName: m.displayName,
       avatarDriveId: m.avatarDriveId,
       joinedAt: m.joinedAt.toISOString(),
+      lastReadAt: m.lastReadAt ? (m.lastReadAt as Date).toISOString() : null,
     })),
     lastMessage: last
       ? {
@@ -167,6 +170,7 @@ export async function getConversationDetailsBatch(
       displayName: users.displayName,
       avatarDriveId: users.avatarDriveId,
       joinedAt: conversationParticipants.joinedAt,
+      lastReadAt: conversationParticipants.lastReadAt,
     })
     .from(conversationParticipants)
     .innerJoin(users, eq(conversationParticipants.userId, users.id))
@@ -263,6 +267,7 @@ export async function getConversationDetailsBatch(
         displayName: m.displayName,
         avatarDriveId: m.avatarDriveId,
         joinedAt: m.joinedAt.toISOString(),
+        lastReadAt: m.lastReadAt ? (m.lastReadAt as Date).toISOString() : null,
       })),
       lastMessage: last
         ? {

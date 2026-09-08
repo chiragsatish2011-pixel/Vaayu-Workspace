@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { markPanelSeen } from "@/lib/workspaceUnread";
 // @ts-ignore - chonky2 types via exports map not resolved by TS in this config
 import {
   FileBrowser,
@@ -99,6 +100,7 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { folderInputRef.current?.setAttribute("webkitdirectory", ""); }, []);
+  useEffect(() => { markPanelSeen("files"); }, []);
 
   const tree = useMemo(() => {
     if (!data) return null;
@@ -127,19 +129,23 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
     if (!currentNode) return [];
     const out: FileData[] = [];
     for (const child of Array.from(currentNode.children.values()) as any[]) {
-      const isDir = child.isFolder;
+      const name = String(child.name);
+      const lower = name.toLowerCase();
+      // Hide internal system folders/files from main Drive view
+      if (child.isFolder && (lower === "avatars" || lower === "voice notes")) continue;
+      if (!child.isFolder && lower.startsWith("avatar-")) continue;
       const mime = child.mimeType || (isDir ? "application/vnd.google-apps.folder" : "application/octet-stream");
       const size = child.size ? Number(child.size) : undefined;
       const modDate = child.file?.modifiedTime ? new Date(child.file.modifiedTime) : undefined;
       const thumb = child.thumbnailLink ? String(child.thumbnailLink).replace(/=s\d+$/, "=s400") : undefined;
       out.push({
         id: String(child.id),
-        name: String(child.name),
+        name,
         isDir,
         size,
         modDate,
         thumbnailUrl: !isDir ? thumb : undefined,
-        ext: isDir ? undefined : "." + String(child.name).split(".").pop()!.toLowerCase(),
+        ext: isDir ? undefined : "." + name.split(".").pop()!.toLowerCase(),
         // keep raw for handlers
         driveFile: child.file ?? child,
         realId: child.file?.id ?? (String(child.id).startsWith("folder-") ? null : String(child.id)),

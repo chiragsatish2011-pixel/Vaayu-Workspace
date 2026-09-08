@@ -498,8 +498,16 @@ export function FileBrowser({
 
   const flat = useMemo(() => {
     if (!tree) return [];
-    return flattenVisible(tree, expanded, sortDir);
-  }, [tree, expanded, sortDir]);
+    const all = flattenVisible(tree, expanded, sortDir);
+    if (!isDrive) return all;
+    // Hide internal system entries in drive view
+    return all.filter(({ node }) => {
+      const lower = node.name.toLowerCase();
+      if (node.isFolder && (lower === "avatars" || lower === "voice notes")) return false;
+      if (!node.isFolder && lower.startsWith("avatar-")) return false;
+      return true;
+    });
+  }, [tree, expanded, sortDir, isDrive]);
 
   // Reset grid navigation when the underlying folder changes.
   useEffect(() => {
@@ -527,11 +535,18 @@ export function FileBrowser({
     }
     const dir = sortDir === "asc" ? 1 : -1;
     const byName = (a: TreeNode, b: TreeNode) => dir * a.name.localeCompare(b.name);
+    // Hide internal system folders/files (avatars, voice notes) from main browser
+    const isSystemEntry = (n: TreeNode) => {
+      const lower = n.name.toLowerCase();
+      if (n.isFolder && (lower === "avatars" || lower === "voice notes")) return true;
+      if (!n.isFolder && lower.startsWith("avatar-")) return true;
+      return false;
+    };
     let folders = Array.from(node.children.values())
-      .filter((c) => c.isFolder)
+      .filter((c) => c.isFolder && !isSystemEntry(c))
       .sort(byName);
     let files = Array.from(node.children.values())
-      .filter((c) => !c.isFolder)
+      .filter((c) => !c.isFolder && !isSystemEntry(c))
       .sort(byName);
     if (isDrive && driveSearch.trim()) {
       const q = driveSearch.trim().toLowerCase();

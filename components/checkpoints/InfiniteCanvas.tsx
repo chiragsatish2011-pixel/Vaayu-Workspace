@@ -8,6 +8,7 @@ import { getDisplayName } from "@/lib/userColor";
 import { formatDateTime } from "@/lib/format";
 import { extractPlainTextFromTiptap, renderTiptapJsonToReact, TiptapEditor } from "@/components/mentions/TiptapEditor";
 import type { CheckpointItem, CheckpointViewer } from "@/components/CheckpointsList";
+import { markPanelSeen } from "@/lib/workspaceUnread";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type CanvasNode = CheckpointItem & {
@@ -107,6 +108,9 @@ export function InfiniteCanvas({
   const router = useRouter();
   const [items, setItems] = useState<CheckpointItem[]>(initialItems);
   useEffect(() => setItems(initialItems), [initialItems]);
+  useEffect(() => {
+    markPanelSeen("checkpoints");
+  }, []);
 
   // Canvas viewport — centered so the central cluster is fully visible on all screen sizes (no left-edge clipping)
   const [pan, setPan] = useState({ x: -40, y: -20 });

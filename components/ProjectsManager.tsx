@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { markPanelSeen } from "@/lib/workspaceUnread";
 import { Badge } from "@/components/Badge";
 import {
   collectFilesFromDrop,
@@ -142,6 +143,10 @@ export function ProjectsManager({
     refreshOrphans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects.length]);
+
+  useEffect(() => {
+    markPanelSeen("projects");
+  }, []);
 
   // ── Upload tuning (research-backed) ──────────────────────────────
   /** Controlled parallelism: 3 concurrent file uploads (Drive rate limit safe). Chunk size is 8MB (UploadManager.tsx:CHUNK_BYTES, 32×256KB). */

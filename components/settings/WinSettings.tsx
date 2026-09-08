@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
@@ -190,13 +190,70 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
 
       <div className="rounded-xl border border-hairline bg-white p-4 shadow-sm">
         <p className="text-sm font-semibold">Personalize your workspace</p>
-        <p className="mt-1 text-xs text-steel">More appearance and workspace options arrive in later phases — your data stays on Drive + Neon.</p>
-        <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
-          {["#0a0a0a", "#1456f0", "#ff5530", "#a855f7", "#10b981", "#f59e0b"].map((c) => (
-            <div key={c} className="h-14 rounded-lg border border-hairline" style={{ background: c }} />
-          ))}
-        </div>
+        <p className="mt-1 text-xs text-steel">Pick an accent — it tints headers and primary buttons workspace-wide. Saved on this device.</p>
+        <PersonalizeSwatches />
       </div>
+    </div>
+  );
+}
+
+function PersonalizeSwatches() {
+  const colors = ["#0a0a0a", "#1456f0", "#ff5530", "#a855f7", "#10b981", "#f59e0b"] as const;
+  const [selected, setSelected] = useState<string>(() => {
+    if (typeof window === "undefined") return "#0a0a0a";
+    try {
+      return window.localStorage.getItem("vaayu:workspace:accent") || "#0a0a0a";
+    } catch {
+      return "#0a0a0a";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("vaayu:workspace:accent", selected);
+      document.documentElement.style.setProperty("--workspace-accent", selected);
+      // Also tint the ink variable for primary buttons in this workspace
+      if (selected !== "#0a0a0a") {
+        document.documentElement.style.setProperty("--color-ink", selected);
+      } else {
+        document.documentElement.style.setProperty("--color-ink", "#0a0a0a");
+      }
+    } catch {}
+  }, [selected]);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("vaayu:workspace:accent");
+      if (saved) {
+        document.documentElement.style.setProperty("--workspace-accent", saved);
+        if (saved !== "#0a0a0a") document.documentElement.style.setProperty("--color-ink", saved);
+      }
+    } catch {}
+  }, []);
+  return (
+    <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
+      {colors.map((c) => {
+        const isActive = selected === c;
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setSelected(c)}
+            aria-label={`Set accent ${c}`}
+            title={c}
+            className={`group relative h-14 rounded-lg border-2 transition-all ${isActive ? "border-ink ring-2 ring-ink/20 scale-[1.02]" : "border-hairline hover:border-steel/40 hover:scale-[1.02]"}`}
+            style={{ background: c }}
+          >
+            {isActive && (
+              <span className="absolute inset-0 grid place-items-center">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-ink shadow">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

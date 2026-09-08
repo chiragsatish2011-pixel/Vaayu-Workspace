@@ -20,6 +20,10 @@
 
 export type ChatPushEventType =
   | "message.created"
+  | "message.updated"
+  | "message.deleted"
+  | "message.reacted"
+  | "conversation.read"
   | "members.added"
   | "members.removed"
   | "conversation.created"
@@ -44,8 +48,11 @@ const conns = new Set<Conn>();
 /** Register a stream connection. Returns an unsubscribe function. */
 export function addConnection(conn: Conn): () => void {
   conns.add(conn);
+  // Notify everyone someone came online
+  setTimeout(() => broadcastPresence(), 50);
   return () => {
     conns.delete(conn);
+    setTimeout(() => broadcastPresence(), 50);
   };
 }
 
@@ -92,4 +99,21 @@ export function revokeConversation(conversationId: string, exceptUserId?: string
 /** For diagnostics: how many live streams are connected. */
 export function connectionCount(): number {
   return conns.size;
+}
+
+/** Get set of currently online user IDs (any active SSE connection). */
+export function getOnlineUserIds(): Set<string> {
+  const s = new Set<string>();
+  for (const c of conns) s.add(c.userId);
+  return s;
+}
+
+/** Broadcast presence change to all connections (lightweight). */
+export function broadcastPresence(): void {
+  const online = Array.from(getOnlineUserIds());
+  for (const c of conns) {
+    try {
+      c.send({ type: "presence" as any, conversationId: null, data: { onlineUserIds: online } });
+    } catch {}
+  }
 }
