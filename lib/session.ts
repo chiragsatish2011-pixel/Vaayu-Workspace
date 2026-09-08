@@ -53,9 +53,18 @@ export async function requireActiveSession(): Promise<ActiveUser> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/signin");
 
-  let rows;
+  let rows:
+    | Array<{
+        id: string;
+        email: string;
+        role: "admin" | "member";
+        displayName?: string | null;
+        avatarDriveId?: string | null;
+        hasCompletedOnboarding?: boolean | null;
+      }>
+    | undefined;
   try {
-    rows = await withGuardTimeout(
+    rows = (await withGuardTimeout(
       db
         .select({
           id: users.id,
@@ -69,21 +78,41 @@ export async function requireActiveSession(): Promise<ActiveUser> {
         .where(eq(users.id, session.user.id))
         .limit(1),
       15000
-    );
+    )) as typeof rows;
   } catch (err) {
-    console.error("[session] failed to load user for guard:", err);
-    redirect("/signin");
+    const msg = String((err as Error)?.message ?? err);
+    if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
+      console.warn("[session] fallback to minimal columns — run migration 0004");
+      try {
+        const fallbackRows = (await withGuardTimeout(
+          db
+            .select({ id: users.id, email: users.email, role: users.role })
+            .from(users)
+            .where(eq(users.id, session.user.id))
+            .limit(1),
+          15000
+        )) as unknown as Array<{ id: string; email: string; role: "admin" | "member" }>;
+        // Patch missing fields
+        rows = fallbackRows.map((r) => ({ ...r, displayName: null, avatarDriveId: null, hasCompletedOnboarding: false })) as typeof rows;
+      } catch (innerErr) {
+        console.error("[session] fallback also failed:", innerErr);
+        redirect("/signin");
+      }
+    } else {
+      console.error("[session] failed to load user for guard:", err);
+      redirect("/signin");
+    }
   }
 
-  const user = rows[0];
+  const user = rows?.[0];
   if (!user) redirect("/signin");
   return {
     id: user.id,
     email: user.email,
     role: user.role,
-    displayName: user.displayName ?? null,
-    avatarDriveId: user.avatarDriveId ?? null,
-    hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+    displayName: (user as { displayName?: string | null }).displayName ?? null,
+    avatarDriveId: (user as { avatarDriveId?: string | null }).avatarDriveId ?? null,
+    hasCompletedOnboarding: Boolean((user as { hasCompletedOnboarding?: boolean | null }).hasCompletedOnboarding),
   };
 }
 
@@ -126,6 +155,29 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
       hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
     };
   } catch (err) {
+    const msg = String((err as Error)?.message ?? err);
+    if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
+      console.warn("[session] api fallback to minimal columns — run migration 0004");
+      try {
+        const rows = await db
+          .select({ id: users.id, email: users.email, role: users.role })
+          .from(users)
+          .where(eq(users.id, session.user.id))
+          .limit(1);
+        const user = rows[0] as unknown as { id: string; email: string; role: "admin" | "member" };
+        if (!user) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          displayName: null,
+          avatarDriveId: null,
+          hasCompletedOnboarding: false,
+        };
+      } catch {
+        return null;
+      }
+    }
     console.error("[session] api guard DB error:", err);
     return null;
   }

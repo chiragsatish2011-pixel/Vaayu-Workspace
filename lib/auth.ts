@@ -49,12 +49,45 @@ export const authOptions: NextAuthOptions = {
         if (!email || !credentials.password) return null;
 
         try {
-          const rows = await db
-            .select()
-            .from(users)
-            .where(eq(users.email, email))
-            .limit(1);
-          const user = rows[0];
+          // Robust fetch: if new profile columns haven't been migrated yet
+          // (e.g. preview deploy behind DB), fall back to minimal columns so
+          // login still works — new fields become available after migration.
+          let user: typeof users.$inferSelect | undefined;
+          try {
+            const rows = await db
+              .select()
+              .from(users)
+              .where(eq(users.email, email))
+              .limit(1);
+            user = rows[0];
+          } catch (err) {
+            const msg = String((err as Error)?.message ?? err);
+            if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
+              console.warn(`[auth][authorize] fallback to minimal columns for (${email}) — run migration 0004`);
+              const rows = await db
+                .select({
+                  id: users.id,
+                  email: users.email,
+                  passwordHash: users.passwordHash,
+                  role: users.role,
+                })
+                .from(users)
+                .where(eq(users.email, email))
+                .limit(1);
+              const fallback = rows[0] as unknown as typeof users.$inferSelect;
+              user = fallback
+                ? {
+                    ...fallback,
+                    displayName: null,
+                    avatarDriveId: null,
+                    avatarFileName: null,
+                    hasCompletedOnboarding: false,
+                  } as typeof users.$inferSelect
+                : undefined;
+            } else {
+              throw err;
+            }
+          }
           if (!user) {
             console.error(`[auth][authorize] login failed: unknown email (${email})`);
             return null;
@@ -74,9 +107,9 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             email: user.email,
             role: user.role,
-            displayName: user.displayName ?? null,
-            avatarDriveId: user.avatarDriveId ?? null,
-            hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+            displayName: (user as { displayName?: string | null }).displayName ?? null,
+            avatarDriveId: (user as { avatarDriveId?: string | null }).avatarDriveId ?? null,
+            hasCompletedOnboarding: Boolean((user as { hasCompletedOnboarding?: boolean }).hasCompletedOnboarding),
           };
         } catch (err) {
           // Infrastructure failure (DB/env down) — NOT bad credentials.
