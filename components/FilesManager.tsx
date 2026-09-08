@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FileBrowser } from "@/components/FileBrowser";
+import dynamic from "next/dynamic";
+
+const ChonkyDrive = dynamic(() => import("@/components/files/ChonkyDrive").then(m => m.ChonkyDrive), { ssr: false, loading: () => <div className="flex flex-1 flex-col bg-[#f8f9fa] p-6"><div className="h-64 animate-pulse rounded-2xl bg-white shadow-sm" /></div> });
 
 /**
  * Team Files manager — Drive-identical file browser.
@@ -74,18 +76,8 @@ export function FilesManager() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <FileBrowser
-        projectDriveId={root.id}
-        projectName={root.name}
-        contextNoun="folder"
-        emptyText="No files yet — use New to create a folder or drag files here to upload."
-        refreshKey={refreshKey}
-        onUploaded={handleUploaded}
-        manage
-        defaultView="grid"
-        variant="drive"
-      />
+    <div className="flex min-h-0 flex-1 flex-col bg-[#f8f9fa]">
+      <ChonkyDrive rootId={root.id} rootName={root.name} refreshKey={refreshKey} onUploaded={handleUploaded} />
     </div>
   );
 }
