@@ -255,7 +255,19 @@ export function CheckpointsList({
         ) : (
           <div className="relative mt-6 space-y-6 pl-4 sm:pl-6 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-[2px] before:bg-hairline-soft sm:before:left-[23px]">
             {items.map((item) => {
-              const primary = (item.displayName && item.displayName.trim()) || item.userEmail;
+              // Display name primary (highlighted), email secondary — never duplicate
+              const rawDisplay = item.displayName && item.displayName.trim();
+              // Fallback: derive from email prefix ("chirag@..." -> "Chirag") so old rows without displayName don't show email twice
+              const derivedFromEmail = (() => {
+                const prefix = item.userEmail.split("@")[0] || item.userEmail;
+                // handle dot/underscore separators: "john.doe" -> "John Doe"
+                return prefix
+                  .split(/[._-]+/)
+                  .filter(Boolean)
+                  .map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
+                  .join(" ");
+              })();
+              const primary = rawDisplay || derivedFromEmail;
               const secondary = item.userEmail;
               const isEditing = editingId === item.id;
               const isDeleting = deletingId === item.id;
@@ -269,20 +281,22 @@ export function CheckpointsList({
                 <div key={item.id} className="relative flex items-start gap-4">
                   {/* Timeline avatar — deterministic color, display name */}
                   <span className="relative z-10 shrink-0 rounded-full shadow-sm ring-4 ring-canvas">
-                    <UserAvatar displayName={item.displayName} email={item.userEmail} avatarDriveId={item.avatarDriveId} size={40} />
+                    <UserAvatar displayName={primary} email={item.userEmail} avatarDriveId={item.avatarDriveId} size={40} />
                   </span>
 
                   {/* Content card */}
                   <div className="flex-1 rounded-xl border border-hairline bg-fog/50 p-4 transition-colors hover:bg-fog">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline-soft/60 pb-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-ink">
-                          {primary}
-                        </span>
-                        <span className="hidden truncate font-mono text-xs text-steel sm:inline">{secondary}</span>
-                        <Badge tone={item.userRole === "admin" ? "phase" : "live"}>
-                          {item.userRole}
-                        </Badge>
+                      <div className="flex min-w-0 flex-col leading-tight">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-display text-[15px] font-bold tracking-tight text-ink">
+                            {primary}
+                          </span>
+                          <Badge tone={item.userRole === "admin" ? "phase" : "live"}>
+                            {item.userRole}
+                          </Badge>
+                        </div>
+                        <span className="truncate font-mono text-xs text-steel">{secondary}</span>
                       </div>
                       <time className="font-mono text-[11px] uppercase tracking-[0.14em] text-stone">
                         {formatDate(item.createdAt)}

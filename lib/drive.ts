@@ -841,6 +841,9 @@ export async function listDriveFolderContents(
     if (cached && Date.now() - cached.at < BROWSE_CACHE_TTL_MS) {
       return cached.files;
     }
+  } else {
+    // Explicitly clear cache for this folder when fresh is requested
+    browseCache.delete(folderId);
   }
   const files: DriveBrowseFile[] = [];
   let pageToken: string | undefined = undefined;

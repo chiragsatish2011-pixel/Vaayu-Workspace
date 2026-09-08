@@ -44,11 +44,8 @@ export function getUserInitials(displayName?: string | null, email?: string | nu
     const parts = source.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
   }
-  // If displayName is a single word, use first two letters; otherwise email initial
+  // Single word or email: first letter only (e.g. "Chirag" -> "C", "aarav@vaayu.com" -> "A")
   const base = source.trim();
-  if (base.length >= 2 && !isIsoLike && displayName && displayName.trim().length >= 2) {
-    return base.slice(0, 2).toUpperCase();
-  }
   return (base[0] ?? "?").toUpperCase();
 }
 
