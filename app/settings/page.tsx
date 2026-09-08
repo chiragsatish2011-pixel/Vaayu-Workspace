@@ -14,6 +14,7 @@ export default async function SettingsPage() {
   return (
     <AppShell
       user={{
+        id: user.id,
         email: user.email,
         role: user.role,
         displayName: user.displayName,

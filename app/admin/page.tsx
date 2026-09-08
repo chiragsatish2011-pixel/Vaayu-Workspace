@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { UserRowActions } from "@/components/UserRowActions";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { formatDate } from "@/lib/format";
 import { getDisplayName } from "@/lib/userColor";
 import { requireAdmin } from "@/lib/session";
 
@@ -35,6 +36,7 @@ export default async function AdminPage() {
   return (
     <AppShell
       user={{
+        id: user.id,
         email: user.email,
         role: user.role,
         displayName: user.displayName,
@@ -98,7 +100,7 @@ export default async function AdminPage() {
                 const secondary = u.email;
                 return (
                   <li key={u.id} className="flex items-start gap-3 px-6 py-3.5">
-                    <UserAvatar displayName={u.displayName} email={u.email} avatarDriveId={u.avatarDriveId} size={36} />
+                    <UserAvatar displayName={u.displayName} email={u.email} userId={u.id} avatarDriveId={u.avatarDriveId} size={36} />
                     <span className="min-w-0 flex-1 leading-tight">
                       <span className="block truncate text-sm font-semibold">
                         {primary}
@@ -110,11 +112,7 @@ export default async function AdminPage() {
                       <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.16em] text-steel">
                         {u.role}
                         {" · "}
-                        {new Date(u.createdAt).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {formatDate(u.createdAt)}
                       </span>
                       <span className="mt-1 block">
                         <Badge tone={u.role === "admin" ? "phase" : "live"}>{u.role}</Badge>

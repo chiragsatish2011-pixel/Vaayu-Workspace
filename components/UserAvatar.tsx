@@ -5,17 +5,22 @@ import { getUserColor, getUserInitials } from "@/lib/userColor";
 export function UserAvatar({
   displayName,
   email,
+  userId,
   avatarDriveId,
   size = 36,
   className = "",
 }: {
   displayName?: string | null;
   email?: string | null;
+  userId?: string | null;
   avatarDriveId?: string | null;
   size?: number;
   className?: string;
 }) {
-  const color = getUserColor(displayName || email || "unknown");
+  // Deterministic per-user color — ALWAYS from stable identifier (email lowercased, or userId fallback), NEVER displayName.
+  // This fixes the Timeline bug where same user ("C" vs "CS") had different colors because we hashed displayName which varies per entry.
+  const stableKey = (email && email.trim()) || (userId && userId.trim()) || (displayName && displayName.trim()) || "unknown";
+  const color = getUserColor(stableKey);
   const initials = getUserInitials(displayName, email);
 
   if (avatarDriveId) {

@@ -8,6 +8,7 @@ import { getDisplayName } from "@/lib/userColor";
 import { Wordmark } from "@/components/Wordmark";
 
 export interface ShellUser {
+  id?: string | null;
   email: string;
   role: "admin" | "member";
   displayName?: string | null;
@@ -49,7 +50,7 @@ export function AppShell({
         </nav>
         <div className="border-t border-hairline-soft p-4">
           <div className="mb-3 flex items-center gap-3 rounded-xl bg-fog px-3 py-2.5">
-            <UserAvatar displayName={user.displayName} email={user.email} avatarDriveId={user.avatarDriveId} size={36} />
+            <UserAvatar displayName={user.displayName} email={user.email} userId={user.id ?? undefined} avatarDriveId={user.avatarDriveId} size={36} />
             <span className="min-w-0 flex-1 leading-tight">
               <span className="block truncate text-[13px] font-semibold">
                 {primary}
@@ -93,7 +94,7 @@ export function AppShell({
                 Phase 1
               </Badge>
               <span title={`${primary} · ${user.role}`}>
-                <UserAvatar displayName={user.displayName} email={user.email} avatarDriveId={user.avatarDriveId} size={36} />
+                <UserAvatar displayName={user.displayName} email={user.email} userId={user.id ?? undefined} avatarDriveId={user.avatarDriveId} size={36} />
               </span>
             </div>
           </div>

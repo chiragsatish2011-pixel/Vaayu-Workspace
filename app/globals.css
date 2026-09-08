@@ -18,7 +18,8 @@
 
 @theme inline {
   --font-sans: var(--font-inter);
-  --font-display: var(--font-space-grotesk);
+  --font-display: var(--font-fraunces);
+  --font-display-fallback: var(--font-space-grotesk);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -36,10 +37,15 @@
   --color-hairline: #e5e7eb;
   --color-hairline-soft: #eaecf0;
 
-  /* Brand bands */
+  /* Brand — Vaayu Labs midnight navy + amber (from preview) */
+  --color-navy: #080c1e;
+  --color-navy-2: #0f1b3d;
+  --color-amber: #f59e0b;
+  --color-amber-soft: #fffbeb;
+
+  /* Brand bands (legacy) */
   --color-pine: #003c33;
   --color-pine-deep: #00251f;
-  --color-navy: #071829;
 
   /* Section identity colors (never for generic buttons/text) */
   --color-coral: #ff5530;
@@ -285,3 +291,44 @@ body {
     transform: none;
   }
 }
+
+/* ── Vaayu Brand — midnight navy + starfield (full atmospheric) ────── */
+.screen--atmospheric {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, #1a2a6a 0%, transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, #2a4a8a 0%, transparent 50%),
+    linear-gradient(180deg, var(--color-navy) 0%, var(--color-navy-2) 60%, #0a0a2e 100%);
+  color: white;
+}
+.starfield {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image: radial-gradient(white 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(70% 50% at 50% 0%, black, transparent);
+  pointer-events: none;
+}
+.glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+.glow--1 { width: 600px; height: 600px; background: #3b82f6; top: -100px; left: -100px; }
+.glow--2 { width: 500px; height: 500px; background: var(--color-amber); top: 20%; right: -50px; opacity: 0.15; }
+.card--glass {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.btn--glass {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+}
+.btn--glass:hover { background: rgba(255, 255, 255, 0.25); }

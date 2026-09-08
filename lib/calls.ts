@@ -29,23 +29,11 @@ export function dailyRoomProperties(type: CallType) {
     // Voice vs Video defaults
     start_video_off: isVoice,
     start_audio_off: false,
-    initial_appearance: isVoice ? "hidden" : "visible",
-    // Recording/transcription off by default
-    enable_recording: "cloud" as const,
-    // Expiry: 4 hours from creation, auto-expel when empty in 5 min
-    exp: Math.floor(Date.now() / 1000) + 4 * 60 * 60,
+    // Recording off by default
+    enable_recording: false as const,
     eject_at_room_exp: true,
     eject_after_elapsed: 240 * 60, // 4 hours hard cap
-    // Network: TURN/STUN handled by Daily (managed), but we ensure it
-    // Lang
     lang: "en",
-    // Enable talk/speaker detection
-    enable_talk_info: true,
-    // Video quality — simulcast + adaptive bitrate
-    // Daily enables simulcast automatically for SFU rooms, but we make it explicit
-    // and tune screen share for low-latency (high frame rate, moderate bitrate)
-    // rather than max resolution — collaboration over passive watching.
-    // These map to Daily's `properties` → `videoConfig` / `screenConfig` where applicable
   };
 }
 

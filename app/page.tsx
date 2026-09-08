@@ -46,7 +46,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      user={{ email: user.email, role: user.role, displayName: user.displayName, avatarDriveId: user.avatarDriveId }}
+      user={{ id: user.id, email: user.email, role: user.role, displayName: user.displayName, avatarDriveId: user.avatarDriveId }}
       active="/"
     >
       {/* ── Hero ── */}

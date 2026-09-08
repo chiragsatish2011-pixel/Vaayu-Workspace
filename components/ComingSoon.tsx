@@ -17,6 +17,7 @@ export async function ComingSoon({ section }: { section: SectionKey }) {
   return (
     <AppShell
       user={{
+        id: user.id,
         email: user.email,
         role: user.role,
         displayName: user.displayName,

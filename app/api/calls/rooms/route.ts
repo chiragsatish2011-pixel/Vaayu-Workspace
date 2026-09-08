@@ -117,6 +117,21 @@ export async function POST(req: NextRequest) {
   const props = dailyRoomProperties(callType);
 
   // Daily room creation — server-only, never exposes API key to client
+  const requestPayload = {
+    name: roomName,
+    privacy: "public" as const,
+    properties: {
+      ...props,
+      enable_network_ui: true,
+      enable_people_ui: true,
+    },
+  };
+  const keyPreview = `${dailyApiKey.slice(0, 4)}…${dailyApiKey.slice(-4)} (len ${dailyApiKey.length})`;
+  // Verbose request logging gated behind DAILY_DEBUG
+  if (process.env.DAILY_DEBUG === "1") {
+    console.log(`[calls/rooms][debug] creating Daily room type=${callType} context=${callContext}${ctxId ? `:${ctxId.slice(0, 8)}` : ""} name=${roomName} key=${keyPreview} payload=${JSON.stringify(requestPayload)}`);
+  }
+
   try {
     const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
       method: "POST",
@@ -124,29 +139,36 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${dailyApiKey}`,
       },
-      body: JSON.stringify({
-        name: roomName,
-        privacy: "public",
-        properties: {
-          ...props,
-          enable_network_ui: true,
-          enable_people_ui: true,
-        },
-      }),
+      body: JSON.stringify(requestPayload),
       cache: "no-store",
     });
 
-    const dailyData = (await dailyRes.json().catch(() => null)) as {
-      name?: string;
-      url?: string;
-      error?: string;
-      info?: unknown;
-    } | null;
+    const dailyText = await dailyRes.text().catch(() => "");
+    let dailyData: { name?: string; url?: string; error?: string; info?: unknown } | null = null;
+    try {
+      dailyData = dailyText ? (JSON.parse(dailyText) as { name?: string; url?: string; error?: string; info?: unknown } | null) : null;
+    } catch {
+      // non-JSON error body
+    }
 
-    if (!dailyRes.ok || !dailyData?.name || !dailyData?.url) {
-      console.error("[calls/rooms] Daily API error", dailyRes.status, dailyData);
-      const msg = typeof dailyData?.error === "string" ? dailyData.error : `Daily room creation failed (HTTP ${dailyRes.status})`;
-      return NextResponse.json({ error: msg }, { status: 502 });
+    const dailyName = (dailyData as { name?: string } | null)?.name;
+    const dailyUrl = (dailyData as { url?: string } | null)?.url;
+    if (!dailyRes.ok || !dailyName || !dailyUrl) {
+      // Log full Daily response (including info) for diagnosis — payload only when DAILY_DEBUG=1 to avoid verbose prod logs
+      const payloadLog = process.env.DAILY_DEBUG === "1" ? ` payload=${JSON.stringify(requestPayload)}` : "";
+      console.error(
+        `[calls/rooms] Daily API error status=${dailyRes.status}${payloadLog} responseText=${dailyText.slice(0, 1000)} parsed=${JSON.stringify(dailyData)?.slice(0, 1000)} key=${keyPreview} url=https://api.daily.co/v1/rooms`
+      );
+      const info = (dailyData as { info?: unknown } | null)?.info;
+      const infoStr = typeof info === "string" ? info : info ? JSON.stringify(info).slice(0, 300) : "";
+      const errMsg = (dailyData as { error?: unknown } | null)?.error;
+      const msg =
+        typeof errMsg === "string"
+          ? `${errMsg}${infoStr ? ` — ${infoStr}` : ""} (HTTP ${dailyRes.status})`
+          : infoStr
+            ? `Daily invalid-request: ${infoStr} (HTTP ${dailyRes.status})`
+            : `Daily room creation failed (HTTP ${dailyRes.status}) — info: ${dailyText.slice(0, 300) || "no body"}`;
+      return NextResponse.json({ error: msg, info: infoStr || dailyText.slice(0, 500), status: dailyRes.status }, { status: 502 });
     }
 
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000);
@@ -157,20 +179,20 @@ export async function POST(req: NextRequest) {
         type: callType,
         context: callContext,
         contextId: ctxId,
-        dailyRoomName: dailyData.name,
-        dailyRoomUrl: dailyData.url,
+        dailyRoomName: dailyName!,
+        dailyRoomUrl: dailyUrl!,
         createdBy: user.id,
         expiresAt,
       })
       .returning();
 
-    console.log(`[calls/rooms] created ${callType} room ${dailyData.name} for ${callContext}${ctxId ? `:${ctxId.slice(0, 8)}` : ""} by ${user.email}`);
+    console.log(`[calls/rooms] created ${callType} room ${dailyName} for ${callContext}${ctxId ? `:${ctxId.slice(0, 8)}` : ""} by ${user.email}`);
 
     return NextResponse.json(
       {
         call: inserted,
-        dailyRoomName: dailyData.name,
-        dailyRoomUrl: dailyData.url,
+        dailyRoomName: dailyName,
+        dailyRoomUrl: dailyUrl,
       },
       { status: 201 }
     );

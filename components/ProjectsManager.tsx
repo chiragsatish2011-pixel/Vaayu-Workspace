@@ -27,6 +27,7 @@ import {
 } from "@/components/UploadManager";
 import { FileBrowser } from "@/components/FileBrowser";
 import { UserAvatar } from "@/components/UserAvatar";
+import { formatDate } from "@/lib/format";
 import { getDisplayName } from "@/lib/userColor";
 import { StartContextCall } from "@/components/calls/StartContextCall";
 
@@ -975,6 +976,7 @@ export function ProjectsManager({
                       <UserAvatar
                         displayName={p.userDisplayName}
                         email={p.userEmail}
+                        userId={p.userId}
                         avatarDriveId={p.userAvatarDriveId}
                         size={20}
                       />
@@ -986,11 +988,7 @@ export function ProjectsManager({
                       </span>
                     </div>
                     <span className="font-mono text-[10px] uppercase tracking-wider shrink-0 text-stone">
-                      {new Date(p.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {formatDate(p.createdAt)}
                     </span>
                   </div>
                 </div>

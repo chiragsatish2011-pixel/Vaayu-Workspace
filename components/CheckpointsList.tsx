@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/Badge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
+import { formatDateTime } from "@/lib/format";
 import { StartContextCall } from "@/components/calls/StartContextCall";
 
 export interface CheckpointItem {
@@ -30,15 +31,8 @@ const EXAMPLE_NOTES = [
   "added checkpoints section for team progress",
 ];
 
-function formatDate(value: string | Date): string {
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+// date formatting is now via shared lib/format.ts — single source of truth
+const formatDate = formatDateTime;
 
 export function CheckpointsList({
   initialItems,
@@ -269,9 +263,9 @@ export function CheckpointsList({
 
               return (
                 <div key={item.id} className="relative flex items-start gap-4">
-                  {/* Timeline avatar — deterministic color, display name */}
+                  {/* Timeline avatar — deterministic color from stable userId/email, display name */}
                   <span className="relative z-10 shrink-0 rounded-full shadow-sm ring-4 ring-canvas">
-                    <UserAvatar displayName={primary} email={item.userEmail} avatarDriveId={item.avatarDriveId} size={40} />
+                    <UserAvatar displayName={item.displayName} email={item.userEmail} userId={item.userId} avatarDriveId={item.avatarDriveId} size={40} />
                   </span>
 
                   {/* Content card */}
