@@ -1,5 +1,6 @@
 import {
   boolean,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -98,4 +99,24 @@ export const chatMessages = pgTable("chat_messages", {
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
+
+export const scheduledMeetings = pgTable("scheduled_meetings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  title: text("title").notNull(),
+  organizerId: uuid("organizer_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+  durationMinutes: integer("duration_minutes").notNull().default(30),
+  callType: callTypeEnum("call_type").notNull(),
+  rrule: text("rrule"),
+  inviteeIds: text("invitee_ids").notNull().default("[]"),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  excludedDates: text("excluded_dates").notNull().default("[]"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ScheduledMeeting = typeof scheduledMeetings.$inferSelect;
+export type NewScheduledMeeting = typeof scheduledMeetings.$inferInsert;
 

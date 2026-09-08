@@ -6,6 +6,11 @@ import { VideoCall } from "./VideoCall";
 import { StandaloneActiveCalls } from "./ActiveCallIndicator";
 import { CallNotificationPrePrompt, CallNotificationBlockedNotice } from "./CallNotificationPrePrompt";
 import { IncomingCallBanner } from "./IncomingCallBanner";
+import { ScheduleMeetingModal } from "./ScheduleMeetingModal";
+import { MeetingCalendar } from "./MeetingCalendar";
+import { MeetingList } from "./MeetingList";
+import { MeetingReminders } from "./MeetingReminders";
+import { isJoinable, type ScheduledMeetingRow } from "@/lib/scheduler";
 
 type HistoryCall = {
   id: string;
@@ -189,6 +194,158 @@ function CallHistory({ currentUserId, currentUserRole }: { currentUserId: string
   );
 }
 
+function ScheduledMeetingsHub({ currentUserId, currentUserRole, onJoinCall }: { currentUserId: string | null; currentUserRole: "admin" | "member"; onJoinCall: (url: string, type: "voice" | "video", name: string) => void }) {
+  const [, setMeetings] = useState<ScheduledMeetingRow[]>([]);
+  const [occurrences, setOccurrences] = useState<Array<{ meeting: ScheduledMeetingRow; occurrenceStart: string; occurrenceEnd: string; isRecurring: boolean }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [editing, setEditing] = useState<ScheduledMeetingRow | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/scheduled-meetings?expand=1", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not load meetings");
+      setMeetings(Array.isArray(data?.meetings) ? data.meetings : []);
+      setOccurrences(Array.isArray(data?.occurrences) ? data.occurrences : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const handleJoin = async (meeting: ScheduledMeetingRow, occStart: string) => {
+    const start = new Date(occStart);
+    if (!isJoinable(start, meeting.durationMinutes)) {
+      alert("This meeting is not yet joinable. You can join 10 minutes before start.");
+      return;
+    }
+    try {
+      // Keep contextId <= 64 chars (API limit): short sched prefix + 8-char id + epoch
+      const ctxId = `sched:${meeting.id.slice(0, 8)}:${Date.parse(occStart) || occStart.slice(0, 16)}`;
+      const res = await fetch("/api/calls/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: meeting.callType, context: meeting.projectId ? "project" : "standalone", contextId: meeting.projectId ?? ctxId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not create room");
+      onJoinCall(data.dailyRoomUrl, meeting.callType, data.dailyRoomName);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Join failed");
+    }
+  };
+
+  const handleCancel = async (meeting: ScheduledMeetingRow, occStart: string | null, mode: "single" | "series") => {
+    try {
+      const body: Record<string, unknown> = { id: meeting.id, mode };
+      if (mode === "single" && occStart) body.occurrenceStart = occStart;
+      const res = await fetch("/api/scheduled-meetings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Cancel failed");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Cancel failed");
+    }
+  };
+
+  const handleEdit = (m: ScheduledMeetingRow) => {
+    setEditing(m);
+    setShowSchedule(true);
+  };
+
+  // Filter occurrences for selected date if calendar date selected
+  const filteredOccurrences = selectedDate
+    ? occurrences.filter((o) => {
+        const d = new Date(o.occurrenceStart);
+        return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth() && d.getDate() === selectedDate.getDate();
+      })
+    : occurrences;
+
+  return (
+    <div className="rounded-2xl border border-hairline bg-canvas p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Scheduled meetings</p>
+          <p className="mt-1 text-xs text-steel">Teams-style — one-time or recurring (daily/weekly/custom), 10 min reminder, 10 min early join</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-full border border-hairline-soft bg-fog/60 p-0.5">
+            <button onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-xs font-semibold ${view === "list" ? "bg-canvas shadow text-ink" : "text-steel"}`}>
+              List
+            </button>
+            <button onClick={() => setView("calendar")} className={`rounded-full px-3 py-1 text-xs font-semibold ${view === "calendar" ? "bg-canvas shadow text-ink" : "text-steel"}`}>
+              Calendar
+            </button>
+          </div>
+          <button onClick={() => { setEditing(null); setShowSchedule(true); }} className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white hover:bg-charcoal">
+            + Schedule
+          </button>
+          <button onClick={() => void load()} className="rounded-full border border-hairline px-3 py-1.5 text-xs font-semibold hover:border-ink">
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      {loading ? (
+        <div className="mt-4 h-32 animate-pulse rounded-xl bg-fog" />
+      ) : view === "calendar" ? (
+        <div className="mt-4">
+          <MeetingCalendar occurrences={occurrences.map((o) => ({ meeting: { id: o.meeting.id, title: o.meeting.title, callType: o.meeting.callType, rrule: o.meeting.rrule }, occurrenceStart: o.occurrenceStart }))} onSelectDate={setSelectedDate} />
+          {selectedDate && (
+            <div className="mt-4">
+              <p className="font-mono text-xs text-steel">Meetings on {selectedDate.toLocaleDateString()} — {filteredOccurrences.length}</p>
+              <div className="mt-2">
+                <MeetingList occurrences={filteredOccurrences} currentUserId={currentUserId} currentUserRole={currentUserRole} onJoin={handleJoin} onEdit={handleEdit} onCancel={handleCancel} />
+              </div>
+              <button onClick={() => setSelectedDate(null)} className="mt-2 text-xs text-steel underline">
+                Show all
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <MeetingList occurrences={occurrences} currentUserId={currentUserId} currentUserRole={currentUserRole} onJoin={handleJoin} onEdit={handleEdit} onCancel={handleCancel} />
+        </div>
+      )}
+
+      <MeetingReminders userId={currentUserId} />
+
+      {showSchedule && (
+        <ScheduleMeetingModal
+          open={showSchedule}
+          onClose={() => {
+            setShowSchedule(false);
+            setEditing(null);
+          }}
+          onCreated={() => {
+            setEditing(null);
+            void load();
+          }}
+          defaultProjectId={null}
+          editingMeeting={editing}
+        />
+      )}
+    </div>
+  );
+}
+
 export function CallsHub({ displayName, userId, userRole }: { displayName: string; userId?: string | null; userRole?: "admin" | "member" }) {
   const [active, setActive] = useState<{ url: string; type: "voice" | "video"; name: string } | null>(null);
   const [creating, setCreating] = useState<"voice" | "video" | null>(null);
@@ -328,6 +485,8 @@ export function CallsHub({ displayName, userId, userRole }: { displayName: strin
       <StandaloneActiveCalls onJoin={(call) => setActive({ url: call.dailyRoomUrl, type: call.type, name: call.dailyRoomName })} />
 
       <CallHistory currentUserId={userId ?? null} currentUserRole={userRole ?? "member"} />
+
+      <ScheduledMeetingsHub currentUserId={userId ?? null} currentUserRole={userRole ?? "member"} onJoinCall={(url, type, name) => setActive({ url, type, name })} />
 
       <div className="rounded-2xl border border-hairline bg-fog/50 p-5">
         <p className="text-sm font-semibold text-ink">How invites work</p>
