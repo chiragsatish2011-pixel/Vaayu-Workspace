@@ -29,7 +29,7 @@ export default async function CallsPage() {
         </p>
 
         <div className="mt-8">
-          <CallsHub displayName={getDisplayName(user.displayName, user.email)} userId={user.id} />
+          <CallsHub displayName={getDisplayName(user.displayName, user.email)} userId={user.id} userRole={user.role} />
         </div>
       </section>
     </AppShell>

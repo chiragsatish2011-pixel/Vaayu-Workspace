@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, lt } from "drizzle-orm";
+import { desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { calls } from "@/db/schema";
 import { dailyRoomNameFor, dailyRoomProperties, type CallContext, type CallType } from "@/lib/calls";
@@ -19,20 +19,28 @@ async function pruneExpired() {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await requireApiSession();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  await pruneExpired();
+  const url = new URL(req.url);
+  const history = url.searchParams.get("history") === "1" || url.searchParams.get("all") === "1";
+
+  // For active view, keep lazy prune of expired (4h). For history, don't prune — show last 50 regardless.
+  if (!history) await pruneExpired();
 
   try {
     const rows = await db
       .select()
       .from(calls)
       .orderBy(desc(calls.createdAt))
-      .limit(20);
+      .limit(history ? 50 : 20);
 
-    // Filter to not-expired (prune is lazy, so filter here too)
+    if (history) {
+      return NextResponse.json({ calls: rows });
+    }
+
+    // Active filter
     const now = Date.now();
     const active = rows.filter((r) => new Date(r.expiresAt).getTime() > now);
 
@@ -200,4 +208,63 @@ export async function POST(req: NextRequest) {
     console.error("[calls/rooms][POST]", err);
     return NextResponse.json({ error: "Could not create call room. Please try again." }, { status: 502 });
   }
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await requireApiSession();
+  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON. Send { id: string } or { ids: string[] }." }, { status: 400 });
+  }
+
+  const raw = body as { id?: unknown; ids?: unknown };
+  let ids: string[] = [];
+  if (typeof raw.id === "string" && raw.id.trim()) ids = [raw.id.trim()];
+  else if (Array.isArray(raw.ids)) ids = raw.ids.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim());
+
+  if (ids.length === 0) return NextResponse.json({ error: "No call id(s) provided." }, { status: 400 });
+  if (ids.length > 50) return NextResponse.json({ error: "Too many ids (max 50)." }, { status: 400 });
+
+  // Fetch to check perms and get Daily names
+  const rows = await db.select().from(calls).where(inArray(calls.id, ids));
+  if (rows.length === 0) return NextResponse.json({ error: "Call not found." }, { status: 404 });
+
+  const allowed: typeof rows = [];
+  const forbidden: string[] = [];
+  for (const r of rows) {
+    if (r.createdBy === user.id || user.role === "admin") allowed.push(r);
+    else forbidden.push(r.id);
+  }
+  if (forbidden.length > 0) {
+    return NextResponse.json({ error: `Not allowed to delete ${forbidden.length} call(s). Only organizer or Admin can delete.`, forbidden }, { status: 403 });
+  }
+
+  // Hard delete from DB
+  await db.delete(calls).where(inArray(calls.id, allowed.map((r) => r.id)));
+
+  // Best-effort Daily.co room deletion (rooms are ephemeral anyway, 4h expiry). Recordings are out of scope: enable_recording is false, so no recordings to delete.
+  try {
+    const dailyApiKey = requireDailyApiKey();
+    if (!dailyApiKey.startsWith("build-phase-placeholder")) {
+      await Promise.all(
+        allowed.map(async (r) => {
+          try {
+            await fetch(`https://api.daily.co/v1/rooms/${encodeURIComponent(r.dailyRoomName)}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${dailyApiKey}` },
+              cache: "no-store",
+            });
+          } catch {}
+        })
+      );
+    }
+  } catch {}
+
+  console.log(`[calls/rooms][DELETE] ${allowed.length} call(s) hard-deleted by ${user.email}: ${allowed.map((r) => r.id).join(",")}`);
+
+  return NextResponse.json({ deleted: allowed.map((r) => r.id), count: allowed.length });
 }
