@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
-import { InfiniteCanvas } from "@/components/checkpoints/InfiniteCanvas";
+import { CheckpointsList } from "@/components/CheckpointsList";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { getCheckpoints } from "@/lib/checkpoints-store";
@@ -88,9 +88,8 @@ export default async function CheckpointsPage() {
         avatarDriveId: user.avatarDriveId,
       }}
       active="/checkpoints"
-      fullBleed
     >
-      <InfiniteCanvas initialItems={initialCheckpoints} currentUser={{ id: user.id, role: user.role }} notice={notice} />
+      <CheckpointsList initialItems={initialCheckpoints} currentUser={{ id: user.id, role: user.role }} notice={notice} />
     </AppShell>
   );
 }
