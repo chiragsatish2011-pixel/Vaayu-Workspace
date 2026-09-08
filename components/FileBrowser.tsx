@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatBytes } from "@/components/UploadProgressBar";
-import { FolderIcon, BoxIcon, GridIcon, ListIcon, MusicIcon, PlayIcon, DocIcon, ImageIcon } from "@/components/icons";
+import { FolderIcon, GridIcon, ListIcon, MusicIcon, PlayIcon, DocIcon, ImageIcon } from "@/components/icons";
 import {
   collectFilesFromDrop,
   collectFilesFromInput,

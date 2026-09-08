@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tag Along — Learn HTML & CSS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EFF6F5;
+    --surface:#FFFFFF;
+    --ink:#1D2B34;
+    --ink-soft:#546670;
+    --border:#D7E3E1;
+    --html-accent:#E8623D;
+    --html-accent-soft:#FBE2D8;
+    --css-accent:#2E5AAC;
+    --css-accent-soft:#DCE6F7;
+    --practice-accent:#7C4DBE;
+    --practice-accent-soft:#E9DFF7;
+    --code-bg:#1B2733;
+    --code-text:#E4EFE9;
+    --radius:14px;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    line-height:1.55;
+  }
+  h1,h2,h3,h4{
+    font-family:'Fredoka',sans-serif;
+    margin:0 0 8px 0;
+    line-height:1.2;
+  }
+  p{margin:0 0 12px 0;}
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px;}
+  code, pre, .mono{font-family:'Fira Code',monospace;}
+
+  /* ---------- Header / Hero ---------- */
+  .hero{
+    padding:56px 0 40px;
+    text-align:center;
+    border-bottom:1px solid var(--border);
+  }
+  .hero .badge{
+    display:inline-block;
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--ink-soft);
+    font-size:14px;
+    padding:6px 16px;
+    border-radius:999px;
+    margin-bottom:18px;
+  }
+  .hero h1{
+    font-size:44px;
+    color:var(--ink);
+  }
+  .hero h1 span{color:var(--html-accent);}
+  .hero .sub{
+    font-size:18px;
+    color:var(--ink-soft);
+    max-width:560px;
+    margin:0 auto 22px;
+  }
+  .agenda{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px 24px;
+    max-width:640px;
+    margin:0 auto;
+    text-align:left;
+  }
+  .agenda h3{font-size:15px;color:var(--ink-soft);margin-bottom:6px;}
+  .agenda p{margin:0;font-size:15px;color:var(--ink);}
+
+  /* ---------- Nav ---------- */
+  .tabbar{
+    position:sticky;
+    top:0;
+    z-index:10;
+    background:rgba(239,246,245,0.92);
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--border);
+    padding:14px 0;
+  }
+  .tabbar .wrap{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  .tab-btn{
+    font-family:'Fredoka',sans-serif;
+    font-size:15px;
+    font-weight:600;
+    border:2px solid transparent;
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:10px 20px;
+    border-radius:999px;
+    cursor:pointer;
+    transition:transform .15s ease;
+  }
+  .tab-btn:hover{transform:translateY(-1px);}
+  .tab-btn.active-html{border-color:var(--html-accent);color:var(--html-accent);background:var(--html-accent-soft);}
+  .tab-btn.active-css{border-color:var(--css-accent);color:var(--css-accent);background:var(--css-accent-soft);}
+  .tab-btn.active-practice{border-color:var(--practice-accent);color:var(--practice-accent);background:var(--practice-accent-soft);}
+
+  /* ---------- Sections ---------- */
+  .panel{display:none;padding:44px 0 70px;}
+  .panel.visible{display:block;}
+  .panel-intro{max-width:640px;margin:0 0 32px;}
+  .panel-intro h2{font-size:30px;}
+  .panel-intro p{color:var(--ink-soft);font-size:16px;}
+
+  .topic-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:26px 26px 22px;
+    margin-bottom:22px;
+  }
+  .topic-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:10px;}
+  .topic-num{
+    flex:none;
+    width:38px;height:38px;
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fredoka',sans-serif;
+    font-weight:600;
+    font-size:16px;
+  }
+  .html-theme .topic-num{background:var(--html-accent-soft);color:var(--html-accent);}
+  .css-theme .topic-num{background:var(--css-accent-soft);color:var(--css-accent);}
+  .practice-theme .topic-num{background:var(--practice-accent-soft);color:var(--practice-accent);}
+
+  .topic-title{font-size:21px;}
+  .tag-chips{margin:2px 0 10px;}
+  .tag-chips span{
+    display:inline-block;
+    font-family:'Fira Code',monospace;
+    font-size:12.5px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    color:var(--ink-soft);
+    padding:3px 9px;
+    border-radius:6px;
+    margin:2px 4px 2px 0;
+  }
+  .topic-desc{color:var(--ink-soft);font-size:15px;margin-bottom:16px;}
+
+  .callout{
+    border-left:4px solid var(--practice-accent);
+    background:var(--practice-accent-soft);
+    padding:12px 16px;
+    border-radius:0 10px 10px 0;
+    font-size:14.5px;
+    margin:14px 0 18px;
+  }
+  .callout b{color:var(--practice-accent);}
+
+  .example-block{margin-top:14px;}
+  .example-label{
+    font-family:'Fredoka',sans-serif;
+    font-weight:600;
+    font-size:14px;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  pre{
+    background:var(--code-bg);
+    color:var(--code-text);
+    padding:16px 18px;
+    border-radius:10px;
+    overflow-x:auto;
+    font-size:13.5px;
+    margin:0 0 10px;
+  }
+  pre code{white-space:pre;}
+  .preview-label{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin:2px 0 6px;
+    font-weight:600;
+  }
+  .preview-frame{
+    width:100%;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:#fff;
+    min-height:120px;
+  }
+  .no-preview-note{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    font-style:italic;
+    margin:6px 0 10px;
+  }
+
+  /* reference table for combined property topics */
+  .ref-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px;}
+  .ref-table th, .ref-table td{
+    text-align:left;
+    padding:8px 10px;
+    border-bottom:1px solid var(--border);
+  }
+  .ref-table th{color:var(--ink-soft);font-family:'Fredoka',sans-serif;font-weight:600;font-size:13px;}
+  .ref-table td.prop{font-family:'Fira Code',monospace;color:var(--css-accent);}
+
+  /* ---------- Practice section ---------- */
+  .practice-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:26px;
+    margin-bottom:28px;
+  }
+  .practice-head{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .practice-badge{
+    flex:none;
+    width:40px;height:40px;
+    border-radius:10px;
+    background:var(--practice-accent-soft);
+    color:var(--practice-accent);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:16px;
+  }
+  .practice-title{font-size:22px;}
+  .practice-skills{font-size:13.5px;color:var(--ink-soft);margin-bottom:16px;}
+  .practice-skills b{color:var(--ink);}
+
+  .section-label{
+    font-family:'Fredoka',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    color:var(--ink);
+    margin:18px 0 8px;
+  }
+  .instructions{padding-left:22px;margin:0 0 8px;}
+  .instructions li{margin-bottom:8px;font-size:15px;color:var(--ink);}
+
+  .try-yourself{
+    border:2px dashed var(--practice-accent);
+    background:var(--practice-accent-soft);
+    border-radius:10px;
+    padding:14px 18px;
+    margin:18px 0;
+    font-size:14.5px;
+  }
+  .try-yourself b{color:var(--practice-accent);}
+
+  details{
+    margin-top:6px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  details summary{
+    cursor:pointer;
+    list-style:none;
+    padding:13px 18px;
+    background:var(--bg);
+    font-family:'Fredoka',sans-serif;
+    font-weight:600;
+    font-size:14.5px;
+    color:var(--ink);
+  }
+  details summary::-webkit-details-marker{display:none;}
+  details summary::before{content:"▸  ";color:var(--practice-accent);}
+  details[open] summary::before{content:"▾  ";}
+  details .details-body{padding:16px 18px;}
+
+  footer{
+    text-align:center;
+    padding:30px 0 50px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+
+  @media (max-width:600px){
+    .hero h1{font-size:32px;}
+    .topic-card, .practice-card{padding:20px;}
+    .tab-btn{padding:9px 14px;font-size:13.5px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">For Class 5 to 9 students</span>
+    <h1>Tag <span>Along</span></h1>
+    <p class="sub">Learn to build a webpage, one tag and one style at a time.</p>
+    <div class="agenda">
+      <h3>Why this page exists</h3>
+      <p>Videos move fast and jump around — this page doesn't. The goal here is to mix practical, hands-on coding with just enough theory to understand <i>why</i> something works, and to explain the tricky parts in plain, simple language instead of technical jargon.</p>
+    </div>
+  </div>
+</header>
+
+<nav class="tabbar">
+  <div class="wrap">
+    <button class="tab-btn active-html" data-tab="html" onclick="showTab('html')">🧱 HTML Tags</button>
+    <button class="tab-btn" data-tab="css" onclick="showTab('css')">🎨 CSS Styling</button>
+    <button class="tab-btn" data-tab="practice" onclick="showTab('practice')">🚀 Practice Zone</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <section id="panel-html" class="panel visible">
+    <div class="panel-intro">
+      <h2>Part 1 · HTML Tags</h2>
+      <p>These seven groups cover every tag you need for now. Go through them in order — each one builds on the last. Copy the code into a file, save it as <span class="mono">.html</span>, and open it in your browser to see it work.</p>
+    </div>
+    <div id="html-topics"></div>
+  </section>
+
+  <section id="panel-css" class="panel">
+    <div class="panel-intro">
+      <h2>Part 2 · CSS Styling</h2>
+      <p>CSS is a huge subject, so this only covers what's necessary to confidently style the pages you already know how to build. No fancy layouts yet — just color, text, and spacing.</p>
+    </div>
+    <div id="css-topics"></div>
+  </section>
+
+  <section id="panel-practice" class="panel">
+    <div class="panel-intro">
+      <h2>Part 3 · Practice Zone</h2>
+      <p>Three small projects using only what you've already learned. For each one: look at the sample, read the steps, and <b>try building it yourself first</b>. The full code is hidden at the bottom in case you get stuck.</p>
+    </div>
+    <div id="practice-list"></div>
+  </section>
+
+</main>
+
+<footer>Made for young web builders · Class 5–9</footer>
+
+<script>
+/* ============================================================
+   DATA — all topics & examples live here so the render logic
+   below can stay short and repeatable.
+   ============================================================ */
+
+const htmlTopics = [
+  {
+    num: 1,
+    title: "Basic Structure Tags",
+    tags: ["&lt;!DOCTYPE html&gt;", "&lt;html&gt;", "&lt;head&gt;", "&lt;title&gt;", "&lt;body&gt;"],
+    desc: "Every webpage starts with these five tags. They build the skeleton that all your other content lives inside.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>My First Page</title>
+</head>
+<body>
+  <p>This is my webpage. Everything visible goes inside the body tag.</p>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 2,
+    title: "Text and Headings",
+    tags: ["&lt;h1&gt;–&lt;h6&gt;", "&lt;p&gt;", "&lt;br&gt;", "&lt;hr&gt;", "&lt;b&gt;/&lt;strong&gt;", "&lt;i&gt;/&lt;em&gt;", "&lt;u&gt;", "&lt;span&gt;"],
+    desc: "These tags control how words look — big titles, paragraphs, bold and italic text, underlines, and dividing lines.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Text Tags</title>
+</head>
+<body>
+  <h1>This is Heading 1</h1>
+  <h3>This is Heading 3</h3>
+  <p>This is a normal paragraph of text.<br>This line starts after a line break.</p>
+  <hr>
+  <p>This is <b>bold</b>, this is <i>italic</i>, and this is <u>underlined</u>.</p>
+  <p>My favorite color is <span>green</span>.</p>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 3,
+    title: "Lists",
+    tags: ["&lt;ul&gt;", "&lt;ol&gt;", "&lt;li&gt;"],
+    desc: "Lists organize information into bullet points or numbered steps, just like a to-do list or a recipe.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Lists</title>
+</head>
+<body>
+  <p>My favorite fruits:</p>
+  <ul>
+    <li>Apple</li>
+    <li>Banana</li>
+    <li>Mango</li>
+  </ul>
+
+  <p>Steps to make tea:</p>
+  <ol>
+    <li>Boil water</li>
+    <li>Add tea leaves</li>
+    <li>Add milk and sugar</li>
+  </ol>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 4,
+    title: "Links and Images",
+    tags: ["&lt;a&gt;", "&lt;img&gt;"],
+    desc: "Links take a visitor to another page, and images make a page visual. Both appear on almost every website.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Links and Images</title>
+</head>
+<body>
+  <p>Visit <a href="https://www.google.com">Google</a> to search anything.</p>
+  <img src="https://via.placeholder.com/150" alt="Sample Image">
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 5,
+    title: "Tables",
+    tags: ["&lt;table&gt;", "&lt;tr&gt;", "&lt;th&gt;", "&lt;td&gt;"],
+    desc: "Tables show information in neat rows and columns — perfect for timetables, marksheets, and price lists.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Table Example</title>
+</head>
+<body>
+  <table border="1">
+    <tr>
+      <th>Name</th>
+      <th>Marks</th>
+    </tr>
+    <tr>
+      <td>Riya</td>
+      <td>85</td>
+    </tr>
+    <tr>
+      <td>Aman</td>
+      <td>90</td>
+    </tr>
+  </table>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 6,
+    title: "Containers",
+    tags: ["&lt;div&gt;"],
+    desc: "A div is an invisible box used to group related content together, so you can organize and later style whole sections at once.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Div Example</title>
+</head>
+<body>
+  <div>
+    <h2>About Me</h2>
+    <p>I study in Class 7 and I love drawing.</p>
+  </div>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 7,
+    title: "Forms",
+    tags: ["&lt;form&gt;", "&lt;input&gt;", "&lt;button&gt;"],
+    desc: "Forms let a user type information and submit it — like a name box, search bar, or contact form.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Form Example</title>
+</head>
+<body>
+  <form>
+    <label>Name:</label>
+    <input type="text" placeholder="Enter your name">
+    <br><br>
+    <button>Submit</button>
+  </form>
+</body>
+</html>`,
+      preview: true
+    }]
+  }
+];
+
+const cssTopics = [
+  {
+    num: 1,
+    title: "What is CSS & How to Add It",
+    tags: ["inline", "internal", "external"],
+    desc: "CSS adds color, size, and spacing to HTML. There are three places you can write it.",
+    callout: "<b>Simple way to remember:</b> inline is a note on one page, internal is a rulebook for one notebook, external is a rulebook you can reuse for many notebooks.",
+    examples: [
+      {
+        label: "1. Inline CSS — written directly on one tag",
+        code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Inline CSS</title>
+</head>
+<body>
+  <p style="color: blue; font-size: 20px;">This is inline CSS.</p>
+</body>
+</html>`,
+        preview: true
+      },
+      {
+        label: "2. Internal CSS — written once for the whole page",
+        code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Internal CSS</title>
+  <style>
+    p {
+      color: green;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <p>This is internal CSS.</p>
+</body>
+</html>`,
+        preview: true
+      },
+      {
+        label: "3. External CSS — written in its own file",
+        code: `<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>External CSS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <p>This is external CSS.</p>
+</body>
+</html>`,
+        secondLabel: "style.css",
+        secondCode: `/* style.css */
+p {
+  color: purple;
+  font-size: 20px;
+}`,
+        preview: false,
+        note: "This example uses two separate files, so there's no single-file preview here — try saving both files on your own computer to see it work."
+      }
+    ]
+  },
+  {
+    num: 2,
+    title: "Selectors",
+    tags: ["element selector", "class (.)", "id (#)"],
+    desc: "A selector tells CSS which HTML elements to style — all of one type, a group with a shared class, or one unique element by id.",
+    callout: "<b>Simple way to remember:</b> a <span class='mono'>class</span> is like a team jersey — many players can wear the same one. An <span class='mono'>id</span> is like a roll number — only one student has it.",
+    examples: [
+      {
+        label: "Element selector — styles every &lt;p&gt;",
+        code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Element Selector</title>
+  <style>
+    p {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <p>This paragraph is red.</p>
+  <p>This one is also red.</p>
+</body>
+</html>`,
+        preview: true
+      },
+      {
+        label: "Class selector — styles only elements with class=\"highlight\"",
+        code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Class Selector</title>
+  <style>
+    .highlight {
+      color: orange;
+    }
+  </style>
+</head>
+<body>
+  <p class="highlight">This is highlighted.</p>
+  <p>This is normal.</p>
+</body>
+</html>`,
+        preview: true
+      },
+      {
+        label: "ID selector — styles the one element with id=\"main-title\"",
+        code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>ID Selector</title>
+  <style>
+    #main-title {
+      color: blue;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="main-title">Welcome to My Page</h1>
+</body>
+</html>`,
+        preview: true
+      }
+    ]
+  },
+  {
+    num: 3,
+    title: "Text & Font Properties",
+    tags: ["color", "font-size", "font-family", "font-weight", "text-align", "text-decoration"],
+    desc: "These six properties control how text looks — its color, size, font, boldness, alignment, and underline.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Text Properties</title>
+  <style>
+    h1 {
+      color: darkgreen;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    p {
+      font-size: 18px;
+      font-weight: bold;
+    }
+    a {
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Styled Heading</h1>
+  <p>This paragraph is bigger and bold.</p>
+  <a href="#">This link has no underline</a>
+</body>
+</html>`,
+      preview: true
+    }],
+    refTable: [
+      ["color", "Sets the text color"],
+      ["font-size", "Sets how big or small the text is"],
+      ["font-family", "Sets which font the text uses"],
+      ["font-weight", "Makes text bold or normal"],
+      ["text-align", "Aligns text left, center, or right"],
+      ["text-decoration", "Adds or removes lines like underline"]
+    ]
+  },
+  {
+    num: 4,
+    title: "Background",
+    tags: ["background-color"],
+    desc: "Sets the background color of an element — the whole page, or just one box or paragraph.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Background Color</title>
+  <style>
+    body {
+      background-color: lightyellow;
+    }
+    p {
+      background-color: lightblue;
+    }
+  </style>
+</head>
+<body>
+  <p>This paragraph has its own background color.</p>
+</body>
+</html>`,
+      preview: true
+    }]
+  },
+  {
+    num: 5,
+    title: "Box Model",
+    tags: ["width", "height", "border", "padding", "margin", "border-radius"],
+    desc: "Every HTML element is like a box with content, padding, a border, and margin around it. Together these five properties control size and spacing.",
+    callout: "<b>Simple way to remember:</b> think of a birthday gift. The toy inside is the content, the bubble wrap around it is the padding, the gift box itself is the border, and the space between your gift and the next gift on the table is the margin.",
+    examples: [{
+      code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Box Model</title>
+  <style>
+    div {
+      width: 220px;
+      height: 100px;
+      background-color: lightpink;
+      border: 3px solid black;
+      padding: 15px;
+      margin: 25px;
+      border-radius: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div>This box uses all five box-model properties.</div>
+</body>
+</html>`,
+      preview: true
+    }],
+    refTable: [
+      ["width / height", "Sets the size of the box"],
+      ["border", "Adds a line around the box"],
+      ["padding", "Adds space INSIDE the box, around the content"],
+      ["margin", "Adds space OUTSIDE the box, between it and others"],
+      ["border-radius", "Rounds the corners of the box"]
+    ]
+  }
+];
+
+const practiceList = [
+  {
+    num: 1,
+    title: "My Introduction Card",
+    skills: "h2, img, p, ul/li, div &nbsp;+&nbsp; class selector, background-color, border, padding, border-radius, text-align",
+    instructions: [
+      "Set up the basic HTML structure (doctype, html, head, body).",
+      "Add a &lt;div&gt; to hold everything — this will be your card.",
+      "Inside the div, add an &lt;h2&gt; with your name.",
+      "Add an &lt;img&gt; tag for your photo (use https://via.placeholder.com/120 as the src for now).",
+      "Add a &lt;p&gt; with 2–3 lines about yourself.",
+      "Add a &lt;ul&gt; with 3 &lt;li&gt; items listing your hobbies.",
+      "In the &lt;head&gt;, add a &lt;style&gt; tag. Give the div a class, then style that class with background-color, padding, border, and border-radius.",
+      "Center everything using text-align."
+    ],
+    previewCode: `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  .card {
+    width: 260px;
+    background-color: #FBE2D8;
+    border: 3px solid #E8623D;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    font-family: sans-serif;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>Aarav Sharma</h2>
+    <img src="https://via.placeholder.com/100" alt="My photo">
+    <p>I am in Class 7. I love football and building things.</p>
+    <ul style="list-style-position: inside; padding: 0;">
+      <li>Football</li>
+      <li>Drawing</li>
+      <li>Video games</li>
+    </ul>
+  </div>
+</body>
+</html>`,
+    fullCode: `<!DOCTYPE html>
+<html>
+<head>
+  <title>My Introduction Card</title>
+  <style>
+    .card {
+      width: 260px;
+      background-color: #FBE2D8;
+      border: 3px solid #E8623D;
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    .card ul {
+      list-style-position: inside;
+      padding: 0;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Aarav Sharma</h2>
+    <img src="https://via.placeholder.com/100" alt="My photo">
+    <p>I am in Class 7. I love football and building things.</p>
+    <ul>
+      <li>Football</li>
+      <li>Drawing</li>
+      <li>Video games</li>
+    </ul>
+  </div>
+</body>
+</html>`
+  },
+  {
+    num: 2,
+    title: "My Weekly Timetable",
+    skills: "table, tr, th, td &nbsp;+&nbsp; border, background-color, text-align",
+    instructions: [
+      "Set up the basic HTML structure.",
+      "Add a &lt;table&gt; tag.",
+      "First row: use &lt;th&gt; cells for column headings — Day and Subject.",
+      "Add one &lt;tr&gt; row per day, with &lt;td&gt; cells for the day name and subject.",
+      "In &lt;style&gt;, add a border to table, th, and td so the grid lines show.",
+      "Give &lt;th&gt; a background-color so the header row stands out.",
+      "Center the text in every cell using text-align."
+    ],
+    previewCode: `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
+  th, td { border: 2px solid #2E5AAC; padding: 8px 12px; text-align: center; }
+  th { background-color: #DCE6F7; }
+</style>
+</head>
+<body>
+  <table>
+    <tr><th>Day</th><th>Subject</th></tr>
+    <tr><td>Monday</td><td>Maths</td></tr>
+    <tr><td>Tuesday</td><td>Science</td></tr>
+    <tr><td>Wednesday</td><td>English</td></tr>
+  </table>
+</body>
+</html>`,
+    fullCode: `<!DOCTYPE html>
+<html>
+<head>
+  <title>My Weekly Timetable</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-family: sans-serif;
+    }
+    th, td {
+      border: 2px solid #2E5AAC;
+      padding: 8px 12px;
+      text-align: center;
+    }
+    th {
+      background-color: #DCE6F7;
+    }
+  </style>
+</head>
+<body>
+  <table>
+    <tr>
+      <th>Day</th>
+      <th>Subject</th>
+    </tr>
+    <tr>
+      <td>Monday</td>
+      <td>Maths</td>
+    </tr>
+    <tr>
+      <td>Tuesday</td>
+      <td>Science</td>
+    </tr>
+    <tr>
+      <td>Wednesday</td>
+      <td>English</td>
+    </tr>
+    <tr>
+      <td>Thursday</td>
+      <td>Computer</td>
+    </tr>
+    <tr>
+      <td>Friday</td>
+      <td>Art</td>
+    </tr>
+  </table>
+</body>
+</html>`
+  },
+  {
+    num: 3,
+    title: "Simple Contact Form",
+    skills: "form, input, button, div &nbsp;+&nbsp; width, margin, padding, background-color, border-radius",
+    instructions: [
+      "Set up the basic HTML structure.",
+      "Add a &lt;div&gt; to act as the form's container box.",
+      "Inside it, add a &lt;form&gt; tag.",
+      "Add a label and an &lt;input type=\"text\"&gt; for Name.",
+      "Add a label and an &lt;input type=\"text\"&gt; for Email.",
+      "Add a label and an &lt;input type=\"text\"&gt; for Message.",
+      "Add a &lt;button&gt; that says \"Send Message\".",
+      "In &lt;style&gt;, give the container a width, margin, padding, background-color, and border-radius.",
+      "Style the inputs with width and padding, and the button with background-color and padding."
+    ],
+    previewCode: `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  .form-box {
+    width: 260px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: #E9DFF7;
+    border-radius: 14px;
+    font-family: sans-serif;
+  }
+  .form-box input {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    border: 1px solid #7C4DBE;
+  }
+  .form-box button {
+    background-color: #7C4DBE;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="form-box">
+    <form>
+      <label>Name</label>
+      <input type="text" placeholder="Your name">
+      <label>Email</label>
+      <input type="text" placeholder="Your email">
+      <label>Message</label>
+      <input type="text" placeholder="Your message">
+      <button>Send Message</button>
+    </form>
+  </div>
+</body>
+</html>`,
+    fullCode: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple Contact Form</title>
+  <style>
+    .form-box {
+      width: 280px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #E9DFF7;
+      border-radius: 14px;
+      font-family: sans-serif;
+    }
+    .form-box label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+    .form-box input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 14px;
+      border-radius: 6px;
+      border: 1px solid #7C4DBE;
+    }
+    .form-box button {
+      background-color: #7C4DBE;
+      color: white;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-box">
+    <form>
+      <label>Name</label>
+      <input type="text" placeholder="Your name">
+
+      <label>Email</label>
+      <input type="text" placeholder="Your email">
+
+      <label>Message</label>
+      <input type="text" placeholder="Your message">
+
+      <button>Send Message</button>
+    </form>
+  </div>
+</body>
+</html>`
+  }
+];
+
+/* ============================================================
+   RENDER LOGIC
+   ============================================================ */
+
+function el(tag, className, html){
+  const e = document.createElement(tag);
+  if(className) e.className = className;
+  if(html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function buildExampleBlock(example){
+  const block = el('div','example-block');
+  if(example.label){
+    block.appendChild(el('div','example-label',example.label));
+  }
+  const pre = document.createElement('pre');
+  const codeEl = document.createElement('code');
+  codeEl.textContent = example.code;
+  pre.appendChild(codeEl);
+  block.appendChild(pre);
+
+  if(example.secondLabel){
+    block.appendChild(el('div','example-label',example.secondLabel));
+    const pre2 = document.createElement('pre');
+    const code2 = document.createElement('code');
+    code2.textContent = example.secondCode;
+    pre2.appendChild(code2);
+    block.appendChild(pre2);
+  }
+
+  if(example.preview){
+    block.appendChild(el('div','preview-label','Live preview'));
+    const iframe = document.createElement('iframe');
+    iframe.className = 'preview-frame';
+    block.appendChild(iframe);
+    iframe.srcdoc = example.code;
+  } else if(example.note){
+    block.appendChild(el('div','no-preview-note', example.note));
+  }
+  return block;
+}
+
+function buildTopicCard(topic, theme){
+  const card = el('div','topic-card '+theme+'-theme');
+
+  const head = el('div','topic-head');
+  head.appendChild(el('div','topic-num', String(topic.num)));
+  const titleWrap = el('div');
+  titleWrap.appendChild(el('div','topic-title', topic.title));
+  head.appendChild(titleWrap);
+  card.appendChild(head);
+
+  const chips = el('div','tag-chips');
+  topic.tags.forEach(t => chips.appendChild(el('span', null, t)));
+  card.appendChild(chips);
+
+  card.appendChild(el('p','topic-desc', topic.desc));
+
+  if(topic.callout){
+    card.appendChild(el('div','callout', topic.callout));
+  }
+
+  topic.examples.forEach(example => card.appendChild(buildExampleBlock(example)));
+
+  if(topic.refTable){
+    const table = document.createElement('table');
+    table.className = 'ref-table';
+    const thead = document.createElement('tr');
+    thead.appendChild(el('th', null, 'Property'));
+    thead.appendChild(el('th', null, 'What it does'));
+    table.appendChild(thead);
+    topic.refTable.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.appendChild(el('td','prop', row[0]));
+      tr.appendChild(el('td', null, row[1]));
+      table.appendChild(tr);
+    });
+    card.appendChild(table);
+  }
+
+  return card;
+}
+
+function buildPracticeCard(p){
+  const card = el('div','practice-card');
+
+  const head = el('div','practice-head');
+  head.appendChild(el('div','practice-badge', String(p.num)));
+  head.appendChild(el('div','practice-title', p.title));
+  card.appendChild(head);
+
+  card.appendChild(el('div','practice-skills','<b>Practices:</b> ' + p.skills));
+
+  card.appendChild(el('div','section-label','🖼️ Sample preview — this is what you\'ll build'));
+  const iframe = document.createElement('iframe');
+  iframe.className = 'preview-frame';
+  iframe.style.minHeight = '260px';
+  card.appendChild(iframe);
+  iframe.srcdoc = p.previewCode;
+
+  card.appendChild(el('div','section-label','📋 Instructions'));
+  const ol = document.createElement('ol');
+  ol.className = 'instructions';
+  p.instructions.forEach(step => ol.appendChild(el('li', null, step)));
+  card.appendChild(ol);
+
+  card.appendChild(el('div','try-yourself','<b>🎯 Try it yourself first!</b> Open a code editor, follow the steps above, and build this on your own before looking at the answer below.'));
+
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = 'Stuck? Click to see the full code';
+  details.appendChild(summary);
+  const body = el('div','details-body');
+  const pre = document.createElement('pre');
+  const codeEl = document.createElement('code');
+  codeEl.textContent = p.fullCode;
+  pre.appendChild(codeEl);
+  body.appendChild(pre);
+  details.appendChild(body);
+  card.appendChild(details);
+
+  return card;
+}
+
+const htmlContainer = document.getElementById('html-topics');
+htmlTopics.forEach(t => htmlContainer.appendChild(buildTopicCard(t,'html')));
+
+const cssContainer = document.getElementById('css-topics');
+cssTopics.forEach(t => cssContainer.appendChild(buildTopicCard(t,'css')));
+
+const practiceContainer = document.getElementById('practice-list');
+practiceList.forEach(p => practiceContainer.appendChild(buildPracticeCard(p)));
+
+/* ============================================================
+   TAB SWITCHING
+   ============================================================ */
+function showTab(name){
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('visible'));
+  document.getElementById('panel-'+name).classList.add('visible');
+
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active-html','active-css','active-practice');
+  });
+  document.querySelector('.tab-btn[data-tab="'+name+'"]').classList.add('active-'+name);
+}
+</script>
+</body>
+</html>
