@@ -54,7 +54,39 @@ export function MentionList({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-hairline bg-canvas p-3 text-xs text-steel shadow-xl">No results. Try a different query.</div>
+      <div className="w-[320px] rounded-xl border border-white/10 bg-[#1e1e1e] p-3 text-xs text-zinc-400 shadow-[0_12px_32px_rgba(0,0,0,0.4)]">No results. Try a different query.</div>
+    );
+  }
+
+  // Group by type — but if the list is just the two channel shortcuts (@explore/@general), render flat without headers to match screenshot
+  const isChannelPopup = items.length <= 2 && items.every((i) => i.label === "explore" || i.label === "general");
+  if (isChannelPopup) {
+    return (
+      <div className="w-[320px] overflow-hidden rounded-xl border border-white/10 bg-[#1e1e1e] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+        {items.map((item, idx) => {
+          const isSelected = idx === selected;
+          const isExplore = item.label === "explore";
+          return (
+            <button
+              key={`${item.type}-${item.id}`}
+              onClick={() => command({ id: item.id, label: item.label, type: item.type, email: item.email, avatarDriveId: item.avatarDriveId })}
+              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors ${isSelected ? "bg-white/10" : "hover:bg-white/[0.06]"}`}
+            >
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-dashed border-white/20 bg-white/5 text-amber-400">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <circle cx="12" cy="12" r="8.5" strokeDasharray="3 2" opacity="0.9" />
+                  <circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" />
+                  <path d="M12 3.5v2 M12 18.5v2 M3.5 12h2 M18.5 12h2" strokeLinecap="round" opacity="0.6" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-white">@{item.label}</span>
+                <span className="block truncate text-xs text-zinc-400">{isExplore ? "Browse everything" : "Notify everyone"}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     );
   }
 
@@ -66,10 +98,10 @@ export function MentionList({
   let globalIndex = -1;
 
   return (
-    <div className="max-h-80 w-80 overflow-y-auto rounded-xl border border-hairline bg-canvas p-2 shadow-xl">
+    <div className="max-h-80 w-80 overflow-y-auto rounded-xl border border-white/10 bg-[#1e1e1e] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
       {grouped.map((group) => (
         <div key={group.type} className="mb-2 last:mb-0">
-          <div className="flex items-center gap-1.5 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-stone">
+          <div className="flex items-center gap-1.5 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-500">
             <span>{mentionIcon(group.type)}</span> {typeLabels[group.type]}
           </div>
           {group.items.map((item) => {
@@ -79,20 +111,20 @@ export function MentionList({
               <button
                 key={`${item.type}-${item.id}`}
                 onClick={() => command({ id: item.id, label: item.label, type: item.type, email: item.email, avatarDriveId: item.avatarDriveId })}
-                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                  isSelected ? "bg-ink text-white" : "hover:bg-fog text-ink"
-                }`}
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? "bg-white/10 text-white" : "hover:bg-white/[0.06] text-zinc-200"}`}
               >
                 {item.type === "person" ? (
-                  <UserAvatar displayName={item.displayName ?? item.label} email={item.email ?? item.sublabel} avatarDriveId={item.avatarDriveId} size={24} />
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isSelected ? "ring-1 ring-white/20" : ""}`}>
+                    <UserAvatar displayName={item.displayName ?? item.label} email={item.email ?? item.sublabel} avatarDriveId={item.avatarDriveId} size={24} />
+                  </span>
                 ) : (
-                  <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${isSelected ? "bg-white/20 text-white" : mentionChipColor(item.type) + " border"}`}>
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs border ${isSelected ? "bg-white/15 text-white border-white/10" : "bg-white/5 text-zinc-400 border-white/10"}`}>
                     {mentionIcon(item.type)}
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium leading-none">{item.label}</span>
-                  <span className={`block truncate font-mono text-[11px] ${isSelected ? "text-white/70" : "text-steel"}`}>{item.sublabel}</span>
+                  <span className="block truncate text-sm font-medium leading-none text-white">{item.label}</span>
+                  <span className={`block truncate font-mono text-[11px] ${isSelected ? "text-zinc-300" : "text-zinc-500"}`}>{item.sublabel}</span>
                 </span>
               </button>
             );

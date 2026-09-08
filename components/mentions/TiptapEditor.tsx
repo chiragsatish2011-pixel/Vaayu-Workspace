@@ -22,22 +22,41 @@ interface TiptapEditorProps {
   onEmptySubmit?: () => void;
 }
 
-// Simple debounce for search
+// Simple debounce for search — inject @explore / @general channel shortcuts like screenshot when query matches
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSearch(query: string): Promise<SuggestionItem[]> {
   return new Promise((resolve) => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
+      const q = query.trim().toLowerCase();
+      const channels: SuggestionItem[] = [];
+      // Show @explore / @general when empty or prefix matches — exactly like screenshot
+      if (!q || "explore".startsWith(q)) {
+        channels.push({ type: "project", id: "explore", label: "explore", sublabel: "Browse everything", displayName: "explore" } as SuggestionItem);
+      }
+      if (!q || "general".startsWith(q)) {
+        channels.push({ type: "project", id: "general", label: "general", sublabel: "Notify everyone", displayName: "general" } as SuggestionItem);
+      }
       try {
         const res = await fetch(`/api/mentions/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
         const data = await res.json().catch(() => null);
-        if (!res.ok) return resolve([]);
+        if (!res.ok) return resolve(channels);
         const results: SuggestionItem[] = Array.isArray(data?.results) ? data.results : [];
-        resolve(results);
+        // Channels first, then server results — mirror screenshot order (@explore on top)
+        const merged = [...channels, ...results];
+        // Dedupe by type+id keep first
+        const seen = new Set<string>();
+        const deduped = merged.filter((it) => {
+          const k = `${it.type}:${it.id}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        resolve(deduped);
       } catch {
-        resolve([]);
+        resolve(channels);
       }
-    }, 200);
+    }, 180);
   });
 }
 
@@ -143,6 +162,11 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
                   trigger: "manual",
                   placement: "bottom-start",
                   maxWidth: "320px",
+                  theme: "vaayu-dark",
+                  arrow: false,
+                  offset: [0, 8],
+                  animation: "fade",
+                  duration: [120, 80],
                 });
               },
               onUpdate: (props: { clientRect: (() => DOMRect | null) | null | undefined; items: SuggestionItem[]; command: (v: unknown) => void }) => {
@@ -256,6 +280,19 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
           color: #8e8e93;
           pointer-events: none;
           height: 0;
+        }
+        .tippy-box[data-theme~="vaayu-dark"] {
+          background: transparent;
+          border: 0;
+          box-shadow: none;
+          padding: 0;
+        }
+        .tippy-box[data-theme~="vaayu-dark"] .tippy-content {
+          padding: 0;
+          background: transparent;
+        }
+        .tippy-box[data-theme~="vaayu-dark"] .tippy-arrow {
+          display: none;
         }
       `}</style>
     </div>
