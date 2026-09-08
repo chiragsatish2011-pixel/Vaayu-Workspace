@@ -66,16 +66,17 @@ function pillLabelFor(node: CanvasNode): string {
 }
 
 // Deterministic initial layout — spreads nodes in a organic cluster like the screenshot (not a boring grid)
+// Shifted right by ~80px so leftmost notes never sit under the floating toolbar or get clipped by overflow-hidden
 function initialPosition(index: number, total: number): { x: number; y: number } {
   const presets: Array<{ x: number; y: number }> = [
     { x: 640, y: 270 }, // central
-    { x: 170, y: 210 }, // mint
-    { x: 150, y: 470 }, // lilac
+    { x: 250, y: 210 }, // mint — was 170, now 250 to clear toolbar
+    { x: 230, y: 470 }, // lilac — was 150, now 230
     { x: 640, y: 520 }, // peach
     { x: 980, y: 300 }, // draft area
-    { x: 380, y: 380 },
+    { x: 460, y: 380 },
     { x: 900, y: 480 },
-    { x: 300, y: 680 },
+    { x: 380, y: 680 },
     { x: 780, y: 620 },
     { x: 1100, y: 520 },
   ];
@@ -107,8 +108,8 @@ export function InfiniteCanvas({
   const [items, setItems] = useState<CheckpointItem[]>(initialItems);
   useEffect(() => setItems(initialItems), [initialItems]);
 
-  // Canvas viewport
-  const [pan, setPan] = useState({ x: -120, y: -40 });
+  // Canvas viewport — centered so the central cluster is fully visible on all screen sizes (no left-edge clipping)
+  const [pan, setPan] = useState({ x: -40, y: -20 });
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<Tool>("select");
   const [isPanning, setIsPanning] = useState(false);
@@ -738,12 +739,12 @@ export function InfiniteCanvas({
                     </>
                   )}
 
-                  <div className={`mt-4 pt-2.5 flex items-center justify-between text-[11px] border-t ${colors.headerBorder}`}>
-                    <div className="flex items-center gap-1.5">
+                  <div className={`mt-4 pt-2.5 flex items-center justify-between gap-2 text-[11px] border-t ${colors.headerBorder}`}>
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                       <UserAvatar displayName={node.displayName} email={node.userEmail} userId={node.userId} size={20} />
-                      <span className="text-zinc-600 font-medium text-[10px]">{getDisplayName(node.displayName, node.userEmail).split(" ")[0]}</span>
+                      <span className="truncate text-zinc-600 font-medium text-[10px]">{getDisplayName(node.displayName, node.userEmail)}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-zinc-400">{isCentral ? "chirag@vaayu.com" : node.userEmail.split("@")[0]}</span>
+                    <span className="shrink-0 truncate text-[10px] font-mono text-zinc-400 max-w-[90px] text-right" title={node.userEmail}>{isCentral ? node.userEmail : node.userEmail.split("@")[0]}</span>
                   </div>
 
                   {isCentral && !isEditing && (

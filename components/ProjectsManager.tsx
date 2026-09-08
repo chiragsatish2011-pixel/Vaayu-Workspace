@@ -86,6 +86,7 @@ export function ProjectsManager({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [recoverable, setRecoverable] = useState<{ ids: Record<string, { driveFileId: string }>; snapshot: { title: string; description: string } } | null>(null);
   // Foreground mode: job ids of the in-flight batch, rendered inline.
   const [batchIds, setBatchIds] = useState<string[] | null>(null);
   const [savingRecord, setSavingRecord] = useState(false);
@@ -262,6 +263,7 @@ export function ProjectsManager({
       setPreviewUrl(null);
     }
     setFormError(null);
+    setRecoverable(null);
     setBatchIds(null);
     setSavingRecord(false);
     if (codebaseInputRef.current) codebaseInputRef.current.value = "";
@@ -528,6 +530,8 @@ export function ProjectsManager({
     if (uploadMode === "foreground") {
       setSubmitting(true);
       setFormError(null);
+      setRecoverable(null);
+      let uploadedIds: Record<string, { driveFileId: string; name: string; size: number }> | null = null;
       try {
         // Single-file mode reuses the per-field batch; folder mode uploads
         // the whole tree (plus the optional preview) inside one batch job.
@@ -583,14 +587,22 @@ export function ProjectsManager({
             setFormError(partialWarning);
           }
         }
+        uploadedIds = ids;
         setSavingRecord(true);
         const project = await recordProject(snapshot, ids);
         handleProjectLanded(project);
         handleCloseModal();
+        setRecoverable(null);
       } catch (err) {
-        setFormError(
-          err instanceof Error ? err.message : "An unexpected error occurred."
-        );
+        const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
+        // If Drive upload succeeded but DB record failed, keep Drive IDs for one-click retry without re-uploading
+        const isNetworkOrRecordError = /network|Failed to publish|project record|Could not save/i.test(msg) && uploadedIds && uploadedIds.codebase;
+        if (isNetworkOrRecordError) {
+          setRecoverable({ ids: uploadedIds!, snapshot });
+          setFormError(`${msg} — Your files are already in Drive. Click "Retry Save" to finish without re-uploading, or dismiss to clean up later via "Sync with Drive".`);
+        } else {
+          setFormError(msg);
+        }
       } finally {
         setSubmitting(false);
         setSavingRecord(false);
@@ -1018,6 +1030,40 @@ export function ProjectsManager({
             {formError && (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700">
                 {formError}
+                {recoverable && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSavingRecord(true);
+                        setFormError(null);
+                        try {
+                          const project = await recordProject(recoverable.snapshot, recoverable.ids as any);
+                          handleProjectLanded(project);
+                          handleCloseModal();
+                          setRecoverable(null);
+                        } catch (e) {
+                          setFormError(e instanceof Error ? e.message : "Retry failed.");
+                        } finally {
+                          setSavingRecord(false);
+                        }
+                      }}
+                      className="rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white hover:bg-charcoal"
+                    >
+                      Retry Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoverable(null);
+                        setFormError("Files remain in Drive — use “Sync with Drive” to recover or delete the orphan manually.");
+                      }}
+                      className="rounded-full border border-red-200 bg-white px-4 py-1.5 text-xs font-semibold text-red-700"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

@@ -143,15 +143,34 @@ export function OnboardingFlow({
           <div className="mt-6">
             <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Step 3 · Your role</p>
             <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">What&apos;s your role at Vaayu?</h2>
-            <p className="mt-2 text-sm text-steel">Your title — e.g. Product Designer, Frontend Engineer, Marketing Lead. Free-form, 2–40 chars.</p>
+            <p className="mt-2 text-sm text-steel">Your title — free-form, 2–40 chars. Pick the suggestion or type your own.</p>
             <input
               autoFocus
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
-              placeholder={department === "Design" ? "Product Designer" : department === "Engineering" ? "Frontend Engineer" : department === "Marketing" ? "Growth Lead" : "Your title"}
+              placeholder="e.g. Frontend Engineer"
               maxLength={40}
-              className="mt-5 w-full rounded-2xl border border-hairline bg-canvas px-4 py-3 text-sm outline-none focus:border-ink"
+              className="mt-5 w-full rounded-2xl border border-hairline bg-canvas px-4 py-3 text-sm outline-none focus:border-ink placeholder:text-stone/60"
             />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] text-stone">Suggestion:</span>
+              {(() => {
+                const suggestion = department === "Design" ? "Product Designer" : department === "Engineering" ? "Frontend Engineer" : department === "Marketing" ? "Growth Lead" : "Frontend Engineer";
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setJobTitle(suggestion)}
+                    className="rounded-full border border-hairline bg-fog px-3 py-1 text-xs font-medium hover:border-ink"
+                  >
+                    Use “{suggestion}”
+                  </button>
+                );
+              })()}
+              <span className="font-mono text-[11px] text-stone">— or type your own. This field is required.</span>
+            </div>
+            {!canFinish && jobTitle.trim().length === 0 && (
+              <p className="mt-2 text-xs text-amber-700">Choose the suggestion or type your title to continue.</p>
+            )}
             <p className="mt-2 font-mono text-[11px] text-stone">Shown on your profile and team directory. You can change it anytime in Settings.</p>
             {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
             <div className="mt-6 flex justify-between">

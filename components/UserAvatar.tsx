@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { getUserColor, getUserInitials } from "@/lib/userColor";
 
 export function UserAvatar({
@@ -17,14 +18,14 @@ export function UserAvatar({
   size?: number;
   className?: string;
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
   // Deterministic per-user color — ALWAYS from stable identifier (email lowercased, or userId fallback), NEVER displayName.
   // This fixes the Timeline bug where same user ("C" vs "CS") had different colors because we hashed displayName which varies per entry.
   const stableKey = (email && email.trim()) || (userId && userId.trim()) || (displayName && displayName.trim()) || "unknown";
   const color = getUserColor(stableKey);
   const initials = getUserInitials(displayName, email);
 
-  if (avatarDriveId) {
-    // Use drive download endpoint for avatar - any logged-in user can view team avatars
+  if (avatarDriveId && !imgFailed) {
     const src = `/api/drive/download?id=${encodeURIComponent(avatarDriveId)}`;
     return (
       <img
@@ -32,7 +33,10 @@ export function UserAvatar({
         alt={displayName || email || "avatar"}
         width={size}
         height={size}
-        className={`shrink-0 rounded-full object-cover ${className}`}
+        loading="lazy"
+        decoding="async"
+        onError={() => setImgFailed(true)}
+        className={`shrink-0 rounded-full object-cover border border-white/20 shadow-sm ${className}`}
         style={{ width: size, height: size }}
       />
     );
