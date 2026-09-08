@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { UserRowActions } from "@/components/UserRowActions";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { getDisplayName } from "@/lib/userColor";
 import { requireAdmin } from "@/lib/session";
 
 export default async function AdminPage() {
@@ -93,7 +94,7 @@ export default async function AdminPage() {
             </h2>
             <ul className="divide-y divide-hairline-soft">
               {allUsers.map((u) => {
-                const primary = (u.displayName && u.displayName.trim()) || u.email;
+                const primary = getDisplayName(u.displayName, u.email);
                 const secondary = u.email;
                 return (
                   <li key={u.id} className="flex items-start gap-3 px-6 py-3.5">

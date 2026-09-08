@@ -10,7 +10,15 @@ export default async function FilesPage() {
   const user = await requireActiveSession();
 
   return (
-    <AppShell user={{ email: user.email, role: user.role }} active="/files">
+    <AppShell
+      user={{
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarDriveId: user.avatarDriveId,
+      }}
+      active="/files"
+    >
       <section className="pt-10 sm:pt-14 pb-16">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">

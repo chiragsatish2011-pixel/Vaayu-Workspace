@@ -8,10 +8,13 @@ import { SectionMatrix, StatusTable } from "@/components/SectionMatrix";
 import { ArrowRightIcon } from "@/components/icons";
 import { requireActiveSession } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
+import { getDisplayName } from "@/lib/userColor";
+
+import { SECTIONS } from "@/components/sections";
 
 const stats = [
   { value: "01", label: "Live phase — auth + shell" },
-  { value: "04", label: "Sections reserved" },
+  { value: String(SECTIONS.length).padStart(2, "0"), label: "Sections reserved" },
   { value: "06", label: "Phases on the roadmap" },
   { value: "00", label: "Hardcoded secrets" },
 ];
@@ -68,7 +71,7 @@ export default async function DashboardPage() {
           >
             Signed in as{" "}
             <span className="font-semibold text-ink">
-              {(user.displayName && user.displayName.trim()) || user.email}
+              {getDisplayName(user.displayName, user.email)}
             </span>{" "}
             <span className="font-mono text-sm text-steel">({user.email})</span> ·{" "}
             <Badge tone="live" className="align-middle">

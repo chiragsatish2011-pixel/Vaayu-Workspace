@@ -164,6 +164,12 @@ const thumbnailCache = new Map<string, string>(); // id -> thumbnailLink (alread
  * folders; now also rooted at the team folder by the Files page — pass any
  * folder id as `projectDriveId` plus a display `projectName`. Delete moves
  * items to Drive trash (recoverable), never permanent-deletes.
+ *
+ * `manage` switches on the in-app file-manager actions (Files page only):
+ * New Folder, Rename, and Move-to-dialog — all executed directly against
+ * the Drive API with a fresh refetch after every mutation, so the UI can
+ * never drift from Drive state. Projects stays a backup/archive surface
+ * and never passes `manage`.
  */
 export function FileBrowser({
   projectId,
@@ -172,6 +178,7 @@ export function FileBrowser({
   emptyText,
   contextNoun = "project",
   refreshKey = 0,
+  manage = false,
   onClose,
 }: {
   projectId?: string;
@@ -183,6 +190,11 @@ export function FileBrowser({
   contextNoun?: string;
   /** Bump to refetch listing (e.g. after uploads land from elsewhere). */
   refreshKey?: number;
+  /**
+   * In-app file-manager actions (New Folder / Rename / Move). Files page
+   * only — Projects never sets this, so manager UI can't leak there.
+   */
+  manage?: boolean;
   onClose?: () => void;
 }) {
   void projectId;
@@ -194,6 +206,19 @@ export function FileBrowser({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // In-app manager ops (manage only): one busy flag + dialog drafts.
+  const [mutating, setMutating] = useState(false);
+  const [newFolderParent, setNewFolderParent] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  // Guards Enter+blur double-submit of the same rename.
+  const renameInflight = useRef<string | null>(null);
+  const [moveNode, setMoveNode] = useState<TreeNode | null>(null);
+  const [moveDestId, setMoveDestId] = useState<string | null>(null);
 
   // Fetch browse data (extracted so delete/upload flows can refetch on demand)
   const load = useCallback(async () => {
@@ -507,6 +532,151 @@ export function FileBrowser({
     );
   }, [selected, tree, realDriveIdOf, trashIds]);
 
+  /* ── In-app manager mutations (manage only) ───────────────────────
+   * Every op hits the Drive API directly and refetches fresh on success —
+   * Drive is the only store, so the list can never drift from it. The
+   * server re-verifies root containment on each call; the client-side
+   * checks below are just for honest confirms and dialog options.
+   */
+
+  /** Index real Drive ids → nodes (synthetic `folder-*` ids excluded). */
+  const realIdIndex = useCallback(() => {
+    const map = new Map<string, TreeNode>();
+    const walk = (n: TreeNode) => {
+      const real = n.file?.id ?? (n.id.startsWith("folder-") ? null : n.id);
+      if (real) map.set(real, n);
+      if (n.isFolder) for (const c of n.children.values()) walk(c);
+    };
+    if (tree) walk(tree);
+    return map;
+  }, [tree]);
+
+  /** All real folders for the Move destination picker + New-folder parents. */
+  const folderOptions = useCallback((): { id: string; name: string; depth: number }[] => {
+    if (!tree || !data) return [];
+    const out: { id: string; name: string; depth: number }[] = [
+      { id: data.root.id, name: `${data.root.name} (root)`, depth: 0 },
+    ];
+    const walk = (n: TreeNode, depth: number) => {
+      const kids = Array.from(n.children.values())
+        .filter((c) => c.isFolder)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      for (const c of kids) {
+        const real = c.file?.id ?? (c.id.startsWith("folder-") ? null : c.id);
+        if (real) {
+          out.push({ id: real, name: c.name, depth });
+          walk(c, depth + 1);
+        }
+      }
+    };
+    walk(tree, 1);
+    return out;
+  }, [tree, data]);
+
+  /** Descendant real ids of a folder node (for move cycle-exclusion). */
+  const descendantIds = useCallback((node: TreeNode): Set<string> => {
+    const ids = new Set<string>();
+    const walk = (n: TreeNode) => {
+      const real = n.file?.id ?? (n.id.startsWith("folder-") ? null : n.id);
+      if (real) ids.add(real);
+      if (n.isFolder) for (const c of n.children.values()) walk(c);
+    };
+    walk(node);
+    return ids;
+  }, []);
+
+  const runMutation = useCallback(
+    async (label: string, work: () => Promise<void>) => {
+      setMutating(true);
+      try {
+        await work();
+        // Fresh refetch — server invalidated its listing cache on mutation.
+        await load();
+      } catch (e) {
+        alert(
+          e instanceof Error ? `${label} failed: ${e.message}` : `${label} failed.`
+        );
+      } finally {
+        setMutating(false);
+      }
+    },
+    [load]
+  );
+
+  const submitNewFolder = useCallback(() => {
+    const name = newFolderName.trim();
+    if (!newFolderParent || !name) return;
+    const parent = newFolderParent;
+    void runMutation("Create folder", async () => {
+      const res = await fetch("/api/drive/create-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentId: parent.id, name }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error || "Could not create folder.");
+      // Reveal the new folder: expand its parent after reload.
+      const index = realIdIndex();
+      const parentNode = index.get(parent.id);
+      if (parentNode && parentNode.relativePath) {
+        setExpanded((prev) => new Set(prev).add(parentNode.relativePath));
+      }
+      setNewFolderParent(null);
+      setNewFolderName("");
+    });
+  }, [newFolderParent, newFolderName, runMutation, realIdIndex]);
+
+  const submitRename = useCallback(
+    (id: string) => {
+      const name = renameDraft.trim();
+      if (!name) return;
+      // Enter keydown + blur can both fire for one edit — one POST only.
+      const key = `${id}:${name}`;
+      if (renameInflight.current === key) return;
+      renameInflight.current = key;
+      void runMutation("Rename", async () => {
+        try {
+          const res = await fetch("/api/drive/rename", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, name }),
+          });
+          const j = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(j?.error || "Could not rename.");
+          setRenamingId(null);
+          setRenameDraft("");
+        } finally {
+          if (renameInflight.current === key) renameInflight.current = null;
+        }
+      });
+    },
+    [renameDraft, runMutation]
+  );
+
+  const submitMove = useCallback(() => {
+    if (!moveNode || !moveDestId) return;
+    const nodeId = realDriveIdOf(moveNode);
+    if (!nodeId) return;
+    const destId = moveDestId;
+    void runMutation("Move", async () => {
+      const res = await fetch("/api/drive/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: nodeId, destinationParentId: destId }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error || "Could not move.");
+      // Reveal the destination after reload.
+      const index = realIdIndex();
+      const dest = index.get(destId);
+      if (dest && dest.relativePath) {
+        setExpanded((prev) => new Set(prev).add(dest.relativePath));
+      }
+      setMoveNode(null);
+      setMoveDestId(null);
+    });
+  }, [moveNode, moveDestId, realDriveIdOf, runMutation, realIdIndex]);
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-hairline bg-canvas p-6">
@@ -559,6 +729,29 @@ export function FileBrowser({
               </button>
               <button onClick={() => setSelected(new Set())} className="text-xs text-steel underline">
                 Clear
+              </button>
+            </>
+          )}
+          {manage && (
+            <>
+              <button
+                onClick={() =>
+                  setNewFolderParent({ id: data.root.id, name: data.root.name })
+                }
+                disabled={mutating}
+                className="rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+                title="Create a new folder here"
+              >
+                + New folder
+              </button>
+              <button
+                onClick={() => void load()}
+                disabled={loading || mutating}
+                className="grid h-7 w-7 place-items-center rounded-full border border-hairline text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                title="Reload from Drive"
+                aria-label="Reload from Drive"
+              >
+                <span aria-hidden>⟳</span>
               </button>
             </>
           )}
@@ -654,6 +847,34 @@ export function FileBrowser({
                   downloading={downloading === flatNode.node.id}
                   onDeleteNode={deleteNode}
                   deleteBusy={deleting !== null}
+                  manage={manage}
+                  mutating={mutating}
+                  renaming={renamingId !== null && realDriveIdOf(flatNode.node) === renamingId}
+                  renameDraft={renameDraft}
+                  onStartRename={(node) => {
+                    const id = realDriveIdOf(node);
+                    if (!id) return;
+                    setRenamingId(id);
+                    setRenameDraft(node.name);
+                  }}
+                  onRenameDraft={setRenameDraft}
+                  onCommitRename={() => {
+                    if (renamingId) submitRename(renamingId);
+                  }}
+                  onCancelRename={() => {
+                    setRenamingId(null);
+                    setRenameDraft("");
+                  }}
+                  onMoveNode={(node) => {
+                    setMoveNode(node);
+                    setMoveDestId(null);
+                  }}
+                  onNewSubfolder={(node) => {
+                    const id = realDriveIdOf(node);
+                    if (!id) return;
+                    setNewFolderParent({ id, name: node.name });
+                    setNewFolderName("");
+                  }}
                 />
               </div>
             );
@@ -664,6 +885,145 @@ export function FileBrowser({
 
       <div className="border-t border-hairline-soft bg-fog/30 px-4 py-2 font-mono text-[11px] text-steel">
         {flat.length} visible · {selected.size > 0 ? `${selected.size} selected` : "scroll to load previews lazily"} · cached session
+      </div>
+
+      {/* ── New Folder dialog (manage only) ── */}
+      {manage && newFolderParent && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitNewFolder();
+            }}
+            className="w-full max-w-sm rounded-2xl border border-hairline bg-canvas p-5 shadow-2xl"
+          >
+            <h3 className="font-display text-base font-bold text-ink">New folder</h3>
+            <p className="mt-1 truncate font-mono text-[11px] text-steel">
+              inside “{newFolderParent.name}”
+            </p>
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              maxLength={120}
+              disabled={mutating}
+              aria-label="New folder name"
+              className="mt-3 w-full rounded-xl border border-hairline bg-canvas px-3 py-2 text-sm text-ink placeholder:text-stone focus:border-ink focus:outline-none"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewFolderParent(null);
+                  setNewFolderName("");
+                }}
+                disabled={mutating}
+                className="rounded-full border border-hairline px-4 py-2 text-xs font-semibold text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={mutating || !newFolderName.trim()}
+                className="rounded-full bg-ink px-5 py-2 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+              >
+                {mutating ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Move-to dialog (manage only) ── */}
+      {manage && moveNode && (
+        <MoveDialog
+          node={moveNode}
+          options={folderOptions()}
+          excludedIds={moveNode.isFolder ? descendantIds(moveNode) : new Set<string>()}
+          selectedId={moveDestId}
+          onSelect={setMoveDestId}
+          busy={mutating}
+          onCancel={() => {
+            setMoveNode(null);
+            setMoveDestId(null);
+          }}
+          onConfirm={submitMove}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Move destination picker ─────────────────────────────────────── */
+function MoveDialog({
+  node,
+  options,
+  excludedIds,
+  selectedId,
+  onSelect,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  node: TreeNode;
+  options: { id: string; name: string; depth: number }[];
+  /** Ids that would cycle the tree (node itself + descendants). Hidden. */
+  excludedIds: Set<string>;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const visible = options.filter((o) => !excludedIds.has(o.id));
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-2xl border border-hairline bg-canvas p-5 shadow-2xl">
+        <h3 className="font-display text-base font-bold text-ink">Move to…</h3>
+        <p className="mt-1 truncate font-mono text-[11px] text-steel">
+          moving “{node.name}”
+        </p>
+        <div className="mt-3 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-hairline-soft bg-fog/40 p-2">
+          {visible.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onSelect(o.id)}
+              disabled={busy}
+              style={{ paddingLeft: `${8 + o.depth * 16}px` }}
+              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                selectedId === o.id
+                  ? "bg-ink font-semibold text-white"
+                  : "text-ink hover:bg-fog"
+              }`}
+            >
+              <FolderIcon className="h-4 w-4 shrink-0 opacity-70" />
+              <span className="truncate">{o.name}</span>
+            </button>
+          ))}
+          {visible.length === 0 && (
+            <p className="p-3 text-xs text-steel">No destination available.</p>
+          )}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-full border border-hairline px-4 py-2 text-xs font-semibold text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy || !selectedId}
+            className="rounded-full bg-ink px-5 py-2 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+          >
+            {busy ? "Moving…" : "Move here"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -683,6 +1043,16 @@ function FileRow({
   downloading,
   onDeleteNode,
   deleteBusy,
+  manage,
+  mutating,
+  renaming,
+  renameDraft,
+  onStartRename,
+  onRenameDraft,
+  onCommitRename,
+  onCancelRename,
+  onMoveNode,
+  onNewSubfolder,
 }: {
   flatNode: FlatNode;
   depth: number;
@@ -696,6 +1066,16 @@ function FileRow({
   downloading: boolean;
   onDeleteNode: (node: TreeNode) => void;
   deleteBusy: boolean;
+  manage: boolean;
+  mutating: boolean;
+  renaming: boolean;
+  renameDraft: string;
+  onStartRename: (node: TreeNode) => void;
+  onRenameDraft: (value: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onMoveNode: (node: TreeNode) => void;
+  onNewSubfolder: (node: TreeNode) => void;
 }) {
   const { node } = flatNode;
   const isFolder = node.isFolder;
@@ -793,7 +1173,24 @@ function FileRow({
 
       {/* Info */}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{node.name}</p>
+        {renaming ? (
+          <input
+            autoFocus
+            value={renameDraft}
+            onChange={(e) => onRenameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onCommitRename();
+              if (e.key === "Escape") onCancelRename();
+            }}
+            onBlur={onCommitRename}
+            disabled={mutating}
+            maxLength={120}
+            aria-label={`Rename ${node.name}`}
+            className="w-full rounded-lg border border-ink bg-canvas px-2 py-1 text-sm font-medium text-ink focus:outline-none"
+          />
+        ) : (
+          <p className="truncate text-sm font-medium text-ink">{node.name}</p>
+        )}
         <p className="truncate font-mono text-[11px] text-stone">
           {isFolder ? `${(node as any).totalDescendantFiles ?? "?"} files` : formatBytes(Number(node.size || 0) || 0)} · {node.mimeType.split("/").pop()}
         </p>
@@ -842,6 +1239,37 @@ function FileRow({
       >
         Delete
       </button>
+      {manage && (
+        <>
+          <button
+            onClick={() => onStartRename(node)}
+            disabled={mutating || renaming}
+            className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-stone transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+            title={`Rename ${isFolder ? "folder" : "file"} in Drive`}
+          >
+            Rename
+          </button>
+          <button
+            onClick={() => onMoveNode(node)}
+            disabled={mutating}
+            className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-stone transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+            title={`Move ${isFolder ? "folder" : "file"} to another folder`}
+          >
+            Move
+          </button>
+          {isFolder && (
+            <button
+              onClick={() => onNewSubfolder(node)}
+              disabled={mutating}
+              className="grid h-7 w-7 place-items-center rounded-full border border-transparent text-base font-bold leading-none text-stone transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+              title={`New subfolder inside "${node.name}"`}
+              aria-label={`New subfolder inside ${node.name}`}
+            >
+              +
+            </button>
+          )}
+        </>
+      )}
       </div>
     </div>
   );

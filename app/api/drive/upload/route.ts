@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ensureSubfolderPath,
   getDriveAccessToken,
+  invalidateDriveBrowseCache,
   MULTIPART_MAX_BYTES,
   resolveUploadDestination,
   uploadDriveFile,
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
     console.log(
       `[drive/upload] (${saved.name}) id=${saved.id} into folder (${parentFolderId}) by (${user.email})`
     );
+    invalidateDriveBrowseCache();
     return NextResponse.json(
       {
         id: saved.id,

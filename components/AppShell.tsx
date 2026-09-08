@@ -4,6 +4,7 @@ import { OnboardingFlow } from "@/components/OnboardingFlow";
 import { SearchIcon } from "@/components/icons";
 import { SignOutButton } from "@/components/SignOutButton";
 import { UserAvatar } from "@/components/UserAvatar";
+import { getDisplayName } from "@/lib/userColor";
 import { Wordmark } from "@/components/Wordmark";
 
 export interface ShellUser {
@@ -26,7 +27,7 @@ export function AppShell({
   active?: string;
   children: React.ReactNode;
 }) {
-  const primary = (user.displayName && user.displayName.trim()) || user.email;
+  const primary = getDisplayName(user.displayName, user.email);
   const secondary = user.email;
   return (
     <div className="flex min-h-screen bg-canvas text-ink">

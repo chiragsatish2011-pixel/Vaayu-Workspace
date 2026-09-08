@@ -78,6 +78,7 @@ export function FilesManager() {
         contextNoun="folder"
         emptyText="No files in the team folder yet — upload above to get started."
         refreshKey={refreshKey}
+        manage
       />
     </div>
   );

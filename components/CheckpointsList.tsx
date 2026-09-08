@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/Badge";
 import { UserAvatar } from "@/components/UserAvatar";
+import { getDisplayName } from "@/lib/userColor";
 
 export interface CheckpointItem {
   id: string;
@@ -255,19 +256,7 @@ export function CheckpointsList({
         ) : (
           <div className="relative mt-6 space-y-6 pl-4 sm:pl-6 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-[2px] before:bg-hairline-soft sm:before:left-[23px]">
             {items.map((item) => {
-              // Display name primary (highlighted), email secondary — never duplicate
-              const rawDisplay = item.displayName && item.displayName.trim();
-              // Fallback: derive from email prefix ("chirag@..." -> "Chirag") so old rows without displayName don't show email twice
-              const derivedFromEmail = (() => {
-                const prefix = item.userEmail.split("@")[0] || item.userEmail;
-                // handle dot/underscore separators: "john.doe" -> "John Doe"
-                return prefix
-                  .split(/[._-]+/)
-                  .filter(Boolean)
-                  .map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
-                  .join(" ");
-              })();
-              const primary = rawDisplay || derivedFromEmail;
+              const primary = getDisplayName(item.displayName, item.userEmail);
               const secondary = item.userEmail;
               const isEditing = editingId === item.id;
               const isDeleting = deletingId === item.id;

@@ -1038,3 +1038,176 @@ export async function isDescendantOfFolder(
   }
   return current === rootFolderId;
 }
+
+/* ── In-app file-manager mutations (Files page) ─────────────────────
+ *
+ * Create-folder, rename, and move operate DIRECTLY on Drive — there is no
+ * app-side file-tree store, so Drive is always the source of truth and the
+ * UI can never drift from it (every mutation invalidates the listing cache
+ * and the client refetches fresh). Callers (API routes) gate every id to
+ * the locked root folder: parents are only ever root-or-descendant, and
+ * moves can never cycle a folder into itself. The Projects backup flow
+ * deliberately has no access to these — it stays upload/browse/download.
+ */
+
+/** Create a real subfolder in Drive under an already-verified parent. */
+export async function createDriveFolder(
+  accessToken: string,
+  parentId: string,
+  rawName: string
+): Promise<{ id: string; name: string }> {
+  if (!isValidDriveFileId(parentId)) {
+    throw new DriveValidationError("[drive] Invalid parent folder ID.");
+  }
+  const name = sanitizeFolderName(rawName);
+  const res = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    }),
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => null)) as {
+    id?: unknown;
+    name?: unknown;
+  } | null;
+  if (!res.ok || typeof data?.id !== "string") {
+    throw driveError("create folder", res.status, JSON.stringify(data));
+  }
+  invalidateDriveBrowseCache();
+  return {
+    id: data.id,
+    name: typeof data?.name === "string" ? data.name : name,
+  };
+}
+
+/** Rename a file or folder in Drive (name only — location untouched). */
+export async function renameDriveFile(
+  accessToken: string,
+  fileId: string,
+  rawName: string
+): Promise<{ id: string; name: string }> {
+  if (!isValidDriveFileId(fileId)) {
+    throw new DriveValidationError("[drive] Invalid file ID.");
+  }
+  // Learn the kind first (trashed/missing fails here) so folders aren't
+  // given file-style extension fallbacks.
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,mimeType,trashed`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }
+  );
+  const meta = (await metaRes.json().catch(() => null)) as {
+    mimeType?: unknown;
+    trashed?: unknown;
+  } | null;
+  if (!metaRes.ok || !meta || meta.trashed) {
+    throw driveError(
+      "rename lookup",
+      metaRes.status,
+      JSON.stringify(meta ?? null)
+    );
+  }
+  const isFolder = meta.mimeType === "application/vnd.google-apps.folder";
+  const name = isFolder
+    ? sanitizeFolderName(rawName)
+    : sanitizeFileName(rawName, extensionOf(rawName));
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name }),
+      cache: "no-store",
+    }
+  );
+  const data = (await res.json().catch(() => null)) as {
+    id?: unknown;
+    name?: unknown;
+  } | null;
+  if (!res.ok || typeof data?.id !== "string") {
+    throw driveError("rename", res.status, JSON.stringify(data));
+  }
+  invalidateDriveBrowseCache();
+  return {
+    id: data.id,
+    name: typeof data?.name === "string" ? data.name : name,
+  };
+}
+
+/**
+ * Move a file/folder: Drive parents surgery (add new parent, remove all
+ * current ones). Moving within the same folder is a no-op success.
+ * Cycle safety (folder into itself/descendant) is enforced by the caller
+ * via isDescendantOfFolder checks — this helper only executes the move.
+ */
+export async function moveDriveFile(
+  accessToken: string,
+  fileId: string,
+  newParentId: string
+): Promise<{ id: string; parents: string[] }> {
+  if (!isValidDriveFileId(fileId) || !isValidDriveFileId(newParentId)) {
+    throw new DriveValidationError("[drive] Invalid file or folder ID.");
+  }
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,parents,trashed`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }
+  );
+  const meta = (await metaRes.json().catch(() => null)) as {
+    parents?: unknown;
+    trashed?: unknown;
+  } | null;
+  if (!metaRes.ok || !meta || meta.trashed) {
+    throw driveError(
+      "move lookup",
+      metaRes.status,
+      JSON.stringify(meta ?? null)
+    );
+  }
+  const currentParents = Array.isArray(meta.parents)
+    ? meta.parents.filter((p): p is string => typeof p === "string")
+    : [];
+  if (currentParents.includes(newParentId)) {
+    return { id: fileId, parents: currentParents };
+  }
+  const params = new URLSearchParams({ addParents: newParentId });
+  if (currentParents.length > 0) {
+    params.set("removeParents", currentParents.join(","));
+  }
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}&fields=id,parents`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }
+  );
+  const data = (await res.json().catch(() => null)) as {
+    id?: unknown;
+    parents?: unknown;
+  } | null;
+  if (!res.ok || typeof data?.id !== "string") {
+    throw driveError("move", res.status, JSON.stringify(data));
+  }
+  invalidateDriveBrowseCache();
+  return {
+    id: data.id,
+    parents: Array.isArray(data.parents)
+      ? data.parents.filter((p): p is string => typeof p === "string")
+      : [],
+  };
+}

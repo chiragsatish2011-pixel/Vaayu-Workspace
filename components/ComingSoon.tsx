@@ -96,7 +96,7 @@ export async function ComingSoon({ section }: { section: SectionKey }) {
                   {item}
                 </p>
                 <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-stone">
-                  Step {String(i + 1).padStart(2, "0")} / 03
+                  Step {String(i + 1).padStart(2, "0")} / {String(s.planned.length).padStart(2, "0")}
                 </p>
               </div>
             </Reveal>

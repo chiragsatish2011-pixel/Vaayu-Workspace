@@ -34,17 +34,30 @@ export function getUserColor(input: string) {
   return PALETTE[idx];
 }
 
+export function getDisplayName(displayName?: string | null, email?: string | null): string {
+  const raw = displayName && displayName.trim();
+  const mail = email && email.trim();
+  // If displayName is missing, empty, iso-like, or identical to email (user set email as name), derive from email
+  if (!raw || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw) || (mail && raw.toLowerCase() === mail.toLowerCase())) {
+    if (!mail) return raw || "Unknown";
+    const prefix = mail.split("@")[0] || mail;
+    return prefix
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
+      .join(" ");
+  }
+  return raw;
+}
+
 export function getUserInitials(displayName?: string | null, email?: string | null): string {
-  // Defensive: if displayName looks like an ISO timestamp (leaked due to sheet misalignment),
-  // ignore it and fall back to email — prevents "20" avatar from "2026-09-08T..." .
-  const rawDisplay = displayName && displayName.trim();
-  const isIsoLike = rawDisplay ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawDisplay) : false;
-  const source = (!isIsoLike && rawDisplay) || (email && email.trim()) || "?";
+  // Use derived display name so "chirag@vaayu.com" with no explicit name gives "C" not email first char still but consistent
+  const effectiveName = getDisplayName(displayName, email);
+  const source = effectiveName !== "Unknown" ? effectiveName : email?.trim() || "?";
   if (source.includes(" ")) {
     const parts = source.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
   }
-  // Single word or email: first letter only (e.g. "Chirag" -> "C", "aarav@vaayu.com" -> "A")
   const base = source.trim();
   return (base[0] ?? "?").toUpperCase();
 }

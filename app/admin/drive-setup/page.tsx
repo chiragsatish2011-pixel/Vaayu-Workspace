@@ -25,7 +25,15 @@ export default async function DriveSetupPage() {
   const isComplete = hasClientId && hasClientSecret && hasRefreshToken;
 
   return (
-    <AppShell user={{ email: user.email, role: user.role }} active="/admin">
+    <AppShell
+      user={{
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarDriveId: user.avatarDriveId,
+      }}
+      active="/admin"
+    >
       <section className="pt-10 sm:pt-14 pb-16">
         <div className="flex items-center gap-2">
           <Link
@@ -200,10 +208,10 @@ export default async function DriveSetupPage() {
                 <div>
                   <p>
                     <span className="font-semibold text-ink">Set the header row.</span>{" "}
-                    Row 1 must be exactly these 8 columns, in order:
+                    Row 1 must be exactly these 9 columns, in order:
                   </p>
                   <p className="mt-2 text-xs font-mono bg-fog p-3 rounded-lg border border-hairline-soft text-ink break-all">
-                    id | note | user_id | user_email | user_role | created_at | updated_at | deleted_at
+                    id | note | user_id | user_email | user_role | display_name | created_at | updated_at | deleted_at
                   </p>
                 </div>
               </li>

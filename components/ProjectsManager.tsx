@@ -27,6 +27,7 @@ import {
 } from "@/components/UploadManager";
 import { FileBrowser } from "@/components/FileBrowser";
 import { UserAvatar } from "@/components/UserAvatar";
+import { getDisplayName } from "@/lib/userColor";
 
 export interface ProjectItem {
   id: string;
@@ -973,13 +974,14 @@ export function ProjectsManager({
                       />
                       <span className="min-w-0 flex flex-col leading-tight">
                         <span className="truncate font-semibold text-ink text-[11px]">
-                          {(p.userDisplayName && p.userDisplayName.trim()) || p.userEmail}
+                          {getDisplayName(p.userDisplayName, p.userEmail)}
                         </span>
                         <span className="truncate font-mono text-[10px] text-steel">{p.userEmail}</span>
                       </span>
                     </div>
                     <span className="font-mono text-[10px] uppercase tracking-wider shrink-0 text-stone">
                       {new Date(p.createdAt).toLocaleDateString("en-US", {
+                        year: "numeric",
                         month: "short",
                         day: "numeric",
                       })}

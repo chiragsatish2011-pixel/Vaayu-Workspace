@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { getDisplayName } from "@/lib/userColor";
 
 export function SettingsForm({
   initialDisplayName,
@@ -142,7 +143,7 @@ export function SettingsForm({
     }
   }
 
-  const primary = (displayName && displayName.trim()) || initialDisplayName || initialEmail;
+  const primary = getDisplayName(displayName || initialDisplayName, initialEmail);
   const secondary = initialEmail;
 
   return (

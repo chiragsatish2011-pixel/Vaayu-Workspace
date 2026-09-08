@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   createResumableUploadSession,
   getDriveAccessToken,
+  invalidateDriveBrowseCache,
   uploadHttpError,
 } from "@/lib/drive";
 import { assertDriveEnv } from "@/lib/env";
