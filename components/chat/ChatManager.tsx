@@ -1060,7 +1060,22 @@ function NewChatModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 </li>
               );
             })}
-            {results.length === 0 && <li className="px-2 py-3 text-center text-xs text-stone">No people found.</li>}
+            {results.length === 0 && (
+              <li className="px-2 py-4 text-center">
+                {query.trim() ? (
+                  <>
+                    <p className="text-xs font-medium text-ink">No matches for “{query.trim()}”</p>
+                    <p className="mt-1 text-xs text-steel">Try a different name or email.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-ink">No other team members yet</p>
+                    <p className="mt-1 text-xs text-steel">Invite your team from Admin → Create account to start chatting.</p>
+                    <a href="/admin" className="mt-2 inline-flex rounded-full border border-hairline px-3 py-1 text-xs font-semibold hover:border-ink">Go to Admin</a>
+                  </>
+                )}
+              </li>
+            )}
           </ul>
 
           {error && <p className="mt-2 text-xs text-error">{error}</p>}

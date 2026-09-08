@@ -100,12 +100,15 @@ export async function GET(req: NextRequest) {
     console.log(`[drive/download] (${safeName}) by (${user.email})`);
     // ?inline=1 streams playable media (voice notes) instead of forcing save
     const inline = new URL(req.url).searchParams.get("inline") === "1";
+    const isImage = (meta.mimeType ?? "").toLowerCase().startsWith("image/");
     return new NextResponse(upstream.body, {
       status: 200,
       headers: {
         "Content-Type": meta.mimeType ?? "application/octet-stream",
         ...(meta.size ? { "Content-Length": meta.size } : {}),
         "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${safeName}"`,
+        // Cache images aggressively — audit saw 1.88 MB avatar re-downloads on every navigation
+        ...(isImage ? { "Cache-Control": "public, max-age=31536000, immutable" } : { "Cache-Control": "private, max-age=60" }),
       },
     });
   } catch (err) {

@@ -93,7 +93,10 @@ export default function SignInPage() {
           autoComplete="email"
           disabled={busy}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            if (error) setError(null);
+            setEmail(e.target.value);
+          }}
           placeholder="you@team.com"
         />
         <AuthField
@@ -103,7 +106,10 @@ export default function SignInPage() {
           autoComplete="current-password"
           disabled={busy}
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            if (error) setError(null);
+            setPassword(e.target.value);
+          }}
           placeholder="••••••••"
         />
         {error && <AuthError message={error} />}
