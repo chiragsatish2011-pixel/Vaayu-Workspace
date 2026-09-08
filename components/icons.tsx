@@ -225,3 +225,50 @@ export function ListIcon(props: IconProps) {
   );
 }
 
+export function BellIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6 9.5a6 6 0 0 1 12 0c0 7-6 9-6 9s-6-2-6-9" />
+      <path d="M9 19a3 3 0 0 0 6 0" />
+    </svg>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
+export function MonitorIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3.5" y="4.5" width="17" height="11" rx="1.5" />
+      <path d="M9 18.5h6M12 15.5v3" />
+    </svg>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+
+export function PaintIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 3a7 7 0 0 1 7 7c0 3.2-2.3 5.8-5.3 6.7-.6.2-1.2-.3-1.2-.9V14a1.5 1.5 0 0 0-1.5-1.5H9.2c-.6 0-1.1-.6-.9-1.2C9.2 8.3 11.8 6 15 6" />
+      <circle cx="9.5" cy="9.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="13.5" cy="8" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+

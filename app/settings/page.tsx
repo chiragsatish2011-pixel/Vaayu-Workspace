@@ -1,7 +1,5 @@
 import { AppShell } from "@/components/AppShell";
-import { Reveal } from "@/components/Reveal";
-import { SettingsForm } from "@/components/SettingsForm";
-import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
+import { WinSettings } from "@/components/settings/WinSettings";
 import { requireActiveSession } from "@/lib/session";
 
 // Protected, per-user page — always render per request, never prerender
@@ -22,60 +20,23 @@ export default async function SettingsPage() {
       }}
       active="/settings"
     >
-      <section className="mx-auto max-w-2xl pt-10 sm:pt-14">
-        <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">
-          Settings
-        </p>
-        <h1
-          className="mt-3 animate-fade-up font-display text-4xl font-bold tracking-[-0.02em] sm:text-5xl"
-          style={{ animationDelay: "90ms" }}
-        >
-          Your profile.
-        </h1>
-        <p className="mt-3 animate-fade-up text-sm text-steel" style={{ animationDelay: "120ms" }}>
-          Update your display name, avatar, and password. Your avatar uses the team&apos;s Google Drive — same infra as project uploads.
-        </p>
-
-        <Reveal className="mt-8 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8">
-          <SettingsForm
-            initialDisplayName={user.displayName}
-            initialEmail={user.email}
-            initialAvatarDriveId={user.avatarDriveId}
-            initialRole={user.role}
-            initialDepartment={user.department}
-            initialJobTitle={user.jobTitle}
+      <section className="pt-6 sm:pt-8">
+        <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Settings</p>
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] sm:text-4xl">Settings</h1>
+        <p className="mt-1 text-sm text-steel">Organised like your system settings — pick a category on the left.</p>
+        <div className="mt-6">
+          <WinSettings
+            user={{
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              displayName: user.displayName,
+              avatarDriveId: user.avatarDriveId,
+              department: user.department,
+              jobTitle: user.jobTitle,
+            }}
           />
-        </Reveal>
-
-        <Reveal
-          delay={120}
-          className="mt-6 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8"
-        >
-          <h2 className="font-display text-xl font-bold tracking-tight text-ink">
-            Uploads
-          </h2>
-          <p className="mt-1 text-sm text-steel">
-            How publishing and file uploads behave for you on this device.
-          </p>
-          <div className="mt-5 border-t border-hairline-soft pt-5">
-            <UploadPreferenceToggle />
-          </div>
-        </Reveal>
-
-        <Reveal
-          delay={160}
-          className="mt-6 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8"
-        >
-          <h2 className="font-display text-xl font-bold tracking-tight text-ink">
-            Notifications
-          </h2>
-          <p className="mt-1 text-sm text-steel">
-            Call notifications are paused while Calls is disabled (see <a href="/calls" className="font-semibold text-ink underline">/calls</a> for why). Nothing to configure here for now.
-          </p>
-          <div className="mt-5 border-t border-hairline-soft pt-5">
-            <p className="text-sm text-stone">Calls notifications are off — Calls is paused workspace-wide.</p>
-          </div>
-        </Reveal>
+        </div>
       </section>
     </AppShell>
   );
