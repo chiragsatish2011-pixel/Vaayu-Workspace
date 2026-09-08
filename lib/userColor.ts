@@ -35,14 +35,18 @@ export function getUserColor(input: string) {
 }
 
 export function getUserInitials(displayName?: string | null, email?: string | null): string {
-  const source = (displayName && displayName.trim()) || (email && email.trim()) || "?";
+  // Defensive: if displayName looks like an ISO timestamp (leaked due to sheet misalignment),
+  // ignore it and fall back to email — prevents "20" avatar from "2026-09-08T..." .
+  const rawDisplay = displayName && displayName.trim();
+  const isIsoLike = rawDisplay ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawDisplay) : false;
+  const source = (!isIsoLike && rawDisplay) || (email && email.trim()) || "?";
   if (source.includes(" ")) {
     const parts = source.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
   }
   // If displayName is a single word, use first two letters; otherwise email initial
   const base = source.trim();
-  if (base.length >= 2 && displayName && displayName.trim().length >= 2) {
+  if (base.length >= 2 && !isIsoLike && displayName && displayName.trim().length >= 2) {
     return base.slice(0, 2).toUpperCase();
   }
   return (base[0] ?? "?").toUpperCase();

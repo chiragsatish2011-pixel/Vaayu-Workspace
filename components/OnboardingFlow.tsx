@@ -18,8 +18,8 @@ export function OnboardingFlow({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [displayName, setDisplayName] = useState(initialDisplayName || email.split("@")[0] || "");
-  const [useCase, setUseCase] = useState("Building products with my team");
-  const [role, setRole] = useState<"admin" | "member">(initialRole);
+  const [department, setDepartment] = useState<string>("");
+  const [jobTitle, setJobTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,8 +39,8 @@ export function OnboardingFlow({
 
   const totalSteps = 3;
   const canNext1 = displayName.trim().length >= 2 && displayName.trim().length <= 40;
-  const canNext2 = useCase.trim().length >= 2;
-  const canFinish = canNext1 && canNext2;
+  const canNext2 = department !== "";
+  const canFinish = canNext1 && canNext2 && jobTitle.trim().length >= 2 && jobTitle.trim().length <= 40;
 
   async function handleFinish() {
     if (!canFinish) return;
@@ -50,7 +50,11 @@ export function OnboardingFlow({
       const res = await fetch("/api/user/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: displayName.trim(), role, useCase: useCase.trim() }),
+        body: JSON.stringify({
+          displayName: displayName.trim(),
+          department,
+          jobTitle: jobTitle.trim(),
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Could not save.");
@@ -105,22 +109,22 @@ export function OnboardingFlow({
 
         {step === 2 && (
           <div className="mt-6">
-            <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Step 2 · Context</p>
-            <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">What will you use Vaayu for?</h2>
-            <p className="mt-2 text-sm text-steel">Pick the closest — helps us tailor empty states. You can change this anytime.</p>
+            <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Step 2 · Your field</p>
+            <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">What field are you in?</h2>
+            <p className="mt-2 text-sm text-steel">Where do you do your best work at Vaayu? This helps teammates find you.</p>
             <div className="mt-5 grid gap-2">
               {[
-                "Building products with my team",
-                "Managing client projects",
-                "Internal ops & documentation",
-                "Personal workspace / exploring",
-              ].map((opt) => (
+                { id: "Design", desc: "Product, visual, brand — crafting how Vaayu looks and feels." },
+                { id: "Engineering", desc: "Frontend, backend, full-stack — building the product." },
+                { id: "Marketing", desc: "Growth, content, comms — sharing Vaayu with the world." },
+              ].map((d) => (
                 <button
-                  key={opt}
-                  onClick={() => setUseCase(opt)}
-                  className={`rounded-xl border px-4 py-3 text-left text-sm transition-colors ${useCase === opt ? "border-ink bg-fog font-medium" : "border-hairline hover:border-stone"}`}
+                  key={d.id}
+                  onClick={() => setDepartment(d.id)}
+                  className={`rounded-xl border p-4 text-left transition-colors ${department === d.id ? "border-ink bg-fog" : "border-hairline hover:border-stone"}`}
                 >
-                  {opt}
+                  <p className="text-sm font-semibold">{d.id}</p>
+                  <p className="mt-1 text-xs text-steel">{d.desc}</p>
                 </button>
               ))}
             </div>
@@ -137,24 +141,18 @@ export function OnboardingFlow({
 
         {step === 3 && (
           <div className="mt-6">
-            <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Step 3 · Role</p>
-            <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">Choose your role</h2>
-            <p className="mt-2 text-sm text-steel">Admins manage accounts and Drive setup. Members collaborate on checkpoints and projects.</p>
-            <div className="mt-5 grid gap-2">
-              {[
-                { id: "member", title: "Member", desc: "Can create checkpoints, publish projects, chat — the default for teammates." },
-                { id: "admin", title: "Admin", desc: "Full access including user management and Drive configuration." },
-              ].map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setRole(r.id as "admin" | "member")}
-                  className={`rounded-xl border p-4 text-left transition-colors ${role === r.id ? "border-ink bg-fog" : "border-hairline hover:border-stone"}`}
-                >
-                  <p className="text-sm font-semibold">{r.title}</p>
-                  <p className="mt-1 text-xs text-steel">{r.desc}</p>
-                </button>
-              ))}
-            </div>
+            <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Step 3 · Your role</p>
+            <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">What&apos;s your role at Vaayu?</h2>
+            <p className="mt-2 text-sm text-steel">Your title — e.g. Product Designer, Frontend Engineer, Marketing Lead. Free-form, 2–40 chars.</p>
+            <input
+              autoFocus
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder={department === "Design" ? "Product Designer" : department === "Engineering" ? "Frontend Engineer" : department === "Marketing" ? "Growth Lead" : "Your title"}
+              maxLength={40}
+              className="mt-5 w-full rounded-2xl border border-hairline bg-canvas px-4 py-3 text-sm outline-none focus:border-ink"
+            />
+            <p className="mt-2 font-mono text-[11px] text-stone">Shown on your profile and team directory. You can change it anytime in Settings.</p>
             {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
             <div className="mt-6 flex justify-between">
               <button onClick={() => setStep(2)} className="rounded-full border border-hairline px-6 py-2.5 text-sm font-medium">

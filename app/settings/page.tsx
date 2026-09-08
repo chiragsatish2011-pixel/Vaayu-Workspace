@@ -41,6 +41,8 @@ export default async function SettingsPage() {
             initialEmail={user.email}
             initialAvatarDriveId={user.avatarDriveId}
             initialRole={user.role}
+            initialDepartment={user.department}
+            initialJobTitle={user.jobTitle}
           />
         </Reveal>
 

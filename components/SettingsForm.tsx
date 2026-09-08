@@ -8,13 +8,19 @@ export function SettingsForm({
   initialEmail,
   initialAvatarDriveId,
   initialRole,
+  initialDepartment,
+  initialJobTitle,
 }: {
   initialDisplayName?: string | null;
   initialEmail: string;
   initialAvatarDriveId?: string | null;
   initialRole: string;
+  initialDepartment?: string | null;
+  initialJobTitle?: string | null;
 }) {
   const [displayName, setDisplayName] = useState(initialDisplayName || "");
+  const [department, setDepartment] = useState(initialDepartment || "");
+  const [jobTitle, setJobTitle] = useState(initialJobTitle || "");
   const [savingName, setSavingName] = useState(false);
   const [nameMsg, setNameMsg] = useState<string | null>(null);
 
@@ -30,24 +36,34 @@ export function SettingsForm({
   const [avatarMsg, setAvatarMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function handleDisplayNameSave() {
+  async function handleProfileSave() {
     const trimmed = displayName.trim();
     if (trimmed.length < 2 || trimmed.length > 40) {
       setNameMsg("Display name must be 2–40 characters.");
       return;
     }
+    if (department && !["Design", "Engineering", "Marketing"].includes(department)) {
+      setNameMsg("Department must be Design, Engineering, or Marketing.");
+      return;
+    }
+    if (jobTitle && (jobTitle.trim().length < 2 || jobTitle.trim().length > 40)) {
+      setNameMsg("Role/title must be 2–40 characters.");
+      return;
+    }
     setSavingName(true);
     setNameMsg(null);
     try {
+      const payload: Record<string, string> = { displayName: trimmed };
+      if (department) payload.department = department;
+      if (jobTitle.trim()) payload.jobTitle = jobTitle.trim();
       const res = await fetch("/api/user/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: trimmed }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Could not save.");
       setNameMsg("Saved — refresh to see it everywhere.");
-      // Optionally reload to update session
       setTimeout(() => window.location.reload(), 800);
     } catch (err) {
       setNameMsg(err instanceof Error ? err.message : "Failed to save.");
@@ -137,7 +153,11 @@ export function SettingsForm({
         <div className="leading-tight">
           <p className="text-lg font-semibold">{primary}</p>
           <p className="font-mono text-xs text-steel">{secondary}</p>
-          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-steel">{initialRole}</p>
+          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-steel">
+            {initialRole}
+            {(department || initialDepartment) && ` · ${department || initialDepartment}`}
+            {(jobTitle || initialJobTitle) && ` · ${jobTitle || initialJobTitle}`}
+          </p>
         </div>
       </div>
 
@@ -169,24 +189,52 @@ export function SettingsForm({
         {avatarMsg && <p className="mt-2 text-xs text-steel">{avatarMsg}</p>}
       </div>
 
-      {/* Display name */}
-      <div className="border-t border-hairline-soft pt-5">
-        <label className="font-mono text-xs uppercase tracking-wider text-steel">Display name</label>
-        <input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Alex Rivera"
-          maxLength={40}
-          className="mt-2 w-full rounded-xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none focus:border-ink"
-        />
-        <div className="mt-3 flex items-center gap-3">
+      {/* Profile — display name + Vaayu field/role */}
+      <div className="border-t border-hairline-soft pt-5 space-y-4">
+        <div>
+          <label className="font-mono text-xs uppercase tracking-wider text-steel">Display name</label>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Alex Rivera"
+            maxLength={40}
+            className="mt-2 w-full rounded-xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none focus:border-ink"
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="font-mono text-xs uppercase tracking-wider text-steel">Field / Department</label>
+            <select
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none focus:border-ink"
+            >
+              <option value="">Select field</option>
+              <option value="Design">Design</option>
+              <option value="Engineering">Engineering</option>
+              <option value="Marketing">Marketing</option>
+            </select>
+          </div>
+          <div>
+            <label className="font-mono text-xs uppercase tracking-wider text-steel">Role / Title at Vaayu</label>
+            <input
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="Product Designer"
+              maxLength={40}
+              className="mt-2 w-full rounded-xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none focus:border-ink"
+            />
+          </div>
+        </div>
+        <p className="font-mono text-[11px] text-stone">Field and title are shown on your profile and help teammates find you. System permission (Admin/Member) stays admin-controlled separately.</p>
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={handleDisplayNameSave}
+            onClick={handleProfileSave}
             disabled={savingName}
             className="rounded-full bg-ink px-5 py-2 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
           >
-            {savingName ? "Saving…" : "Save name"}
+            {savingName ? "Saving…" : "Save profile"}
           </button>
           {nameMsg && <span className="text-xs text-steel">{nameMsg}</span>}
         </div>

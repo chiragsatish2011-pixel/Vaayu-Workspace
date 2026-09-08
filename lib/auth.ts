@@ -61,8 +61,8 @@ export const authOptions: NextAuthOptions = {
               .limit(1);
             user = rows[0];
           } catch (err) {
-            const msg = String((err as Error)?.message ?? err);
-            if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
+          const msg = String((err as Error)?.message ?? err);
+          if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed") || msg.includes("department") || msg.includes("job_title"))) {
               console.warn(`[auth][authorize] fallback to minimal columns for (${email}) — run migration 0004`);
               const rows = await db
                 .select({
@@ -82,6 +82,8 @@ export const authOptions: NextAuthOptions = {
                     avatarDriveId: null,
                     avatarFileName: null,
                     hasCompletedOnboarding: false,
+                    department: null,
+                    jobTitle: null,
                   } as typeof users.$inferSelect
                 : undefined;
             } else {
@@ -110,6 +112,8 @@ export const authOptions: NextAuthOptions = {
             displayName: (user as { displayName?: string | null }).displayName ?? null,
             avatarDriveId: (user as { avatarDriveId?: string | null }).avatarDriveId ?? null,
             hasCompletedOnboarding: Boolean((user as { hasCompletedOnboarding?: boolean }).hasCompletedOnboarding),
+            department: (user as { department?: string | null }).department ?? null,
+            jobTitle: (user as { jobTitle?: string | null }).jobTitle ?? null,
           };
         } catch (err) {
           // Infrastructure failure (DB/env down) — NOT bad credentials.
@@ -131,6 +135,8 @@ export const authOptions: NextAuthOptions = {
         token.displayName = (user as { displayName?: string | null }).displayName ?? null;
         token.avatarDriveId = (user as { avatarDriveId?: string | null }).avatarDriveId ?? null;
         token.hasCompletedOnboarding = Boolean((user as { hasCompletedOnboarding?: boolean }).hasCompletedOnboarding);
+        token.department = (user as { department?: string | null }).department ?? null;
+        token.jobTitle = (user as { jobTitle?: string | null }).jobTitle ?? null;
       }
       return token;
     },
@@ -141,6 +147,8 @@ export const authOptions: NextAuthOptions = {
         session.user.displayName = (token.displayName as string | null) ?? null;
         session.user.avatarDriveId = (token.avatarDriveId as string | null) ?? null;
         session.user.hasCompletedOnboarding = Boolean(token.hasCompletedOnboarding);
+        session.user.department = (token.department as string | null) ?? null;
+        session.user.jobTitle = (token.jobTitle as string | null) ?? null;
       }
       return session;
     },

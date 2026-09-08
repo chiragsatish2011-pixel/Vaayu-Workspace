@@ -8,6 +8,8 @@ declare module "next-auth" {
     displayName?: string | null;
     avatarDriveId?: string | null;
     hasCompletedOnboarding?: boolean;
+    department?: string | null;
+    jobTitle?: string | null;
   }
 
   interface Session {
@@ -17,6 +19,8 @@ declare module "next-auth" {
       displayName?: string | null;
       avatarDriveId?: string | null;
       hasCompletedOnboarding?: boolean;
+      department?: string | null;
+      jobTitle?: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -28,5 +32,7 @@ declare module "next-auth/jwt" {
     displayName?: string | null;
     avatarDriveId?: string | null;
     hasCompletedOnboarding?: boolean;
+    department?: string | null;
+    jobTitle?: string | null;
   }
 }

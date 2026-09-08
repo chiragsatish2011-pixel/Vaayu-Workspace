@@ -23,6 +23,8 @@ export interface ActiveUser {
   displayName?: string | null;
   avatarDriveId?: string | null;
   hasCompletedOnboarding?: boolean;
+  department?: string | null;
+  jobTitle?: string | null;
 }
 
 /**
@@ -61,6 +63,8 @@ export async function requireActiveSession(): Promise<ActiveUser> {
         displayName?: string | null;
         avatarDriveId?: string | null;
         hasCompletedOnboarding?: boolean | null;
+        department?: string | null;
+        jobTitle?: string | null;
       }>
     | undefined;
   try {
@@ -73,6 +77,8 @@ export async function requireActiveSession(): Promise<ActiveUser> {
           displayName: users.displayName,
           avatarDriveId: users.avatarDriveId,
           hasCompletedOnboarding: users.hasCompletedOnboarding,
+          department: users.department,
+          jobTitle: users.jobTitle,
         })
         .from(users)
         .where(eq(users.id, session.user.id))
@@ -81,7 +87,14 @@ export async function requireActiveSession(): Promise<ActiveUser> {
     )) as typeof rows;
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
-    if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
+    if (
+      msg.includes("column") &&
+      (msg.includes("display_name") ||
+        msg.includes("avatar") ||
+        msg.includes("has_completed") ||
+        msg.includes("department") ||
+        msg.includes("job_title"))
+    ) {
       console.warn("[session] fallback to minimal columns — run migration 0004");
       try {
         const fallbackRows = (await withGuardTimeout(
@@ -93,7 +106,14 @@ export async function requireActiveSession(): Promise<ActiveUser> {
           15000
         )) as unknown as Array<{ id: string; email: string; role: "admin" | "member" }>;
         // Patch missing fields
-        rows = fallbackRows.map((r) => ({ ...r, displayName: null, avatarDriveId: null, hasCompletedOnboarding: false })) as typeof rows;
+        rows = fallbackRows.map((r) => ({
+          ...r,
+          displayName: null,
+          avatarDriveId: null,
+          hasCompletedOnboarding: false,
+          department: null,
+          jobTitle: null,
+        })) as typeof rows;
       } catch (innerErr) {
         console.error("[session] fallback also failed:", innerErr);
         redirect("/signin");
@@ -113,6 +133,8 @@ export async function requireActiveSession(): Promise<ActiveUser> {
     displayName: (user as { displayName?: string | null }).displayName ?? null,
     avatarDriveId: (user as { avatarDriveId?: string | null }).avatarDriveId ?? null,
     hasCompletedOnboarding: Boolean((user as { hasCompletedOnboarding?: boolean | null }).hasCompletedOnboarding),
+    department: (user as { department?: string | null }).department ?? null,
+    jobTitle: (user as { jobTitle?: string | null }).jobTitle ?? null,
   };
 }
 
@@ -140,6 +162,8 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
         displayName: users.displayName,
         avatarDriveId: users.avatarDriveId,
         hasCompletedOnboarding: users.hasCompletedOnboarding,
+        department: users.department,
+        jobTitle: users.jobTitle,
       })
       .from(users)
       .where(eq(users.id, session.user.id))
@@ -153,11 +177,20 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
       displayName: user.displayName ?? null,
       avatarDriveId: user.avatarDriveId ?? null,
       hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+      department: user.department ?? null,
+      jobTitle: user.jobTitle ?? null,
     };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
-    if (msg.includes("column") && (msg.includes("display_name") || msg.includes("avatar") || msg.includes("has_completed"))) {
-      console.warn("[session] api fallback to minimal columns — run migration 0004");
+    if (
+      msg.includes("column") &&
+      (msg.includes("display_name") ||
+        msg.includes("avatar") ||
+        msg.includes("has_completed") ||
+        msg.includes("department") ||
+        msg.includes("job_title"))
+    ) {
+      console.warn("[session] api fallback to minimal columns — run migration 0004/0005");
       try {
         const rows = await db
           .select({ id: users.id, email: users.email, role: users.role })
@@ -173,6 +206,8 @@ export async function requireApiSession(): Promise<ActiveUser | null> {
           displayName: null,
           avatarDriveId: null,
           hasCompletedOnboarding: false,
+          department: null,
+          jobTitle: null,
         };
       } catch {
         return null;

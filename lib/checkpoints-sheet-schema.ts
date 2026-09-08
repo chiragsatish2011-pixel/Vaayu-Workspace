@@ -73,12 +73,29 @@ export function headerMatches(firstRow: string[] | undefined): boolean {
  * Parse one sheet row into a record. Returns null for malformed/partial rows
  * (missing id) so callers skip them instead of surfacing corrupt data.
  */
+function isIsoTimestamp(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s);
+}
+
 export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
-  const rawLen = row.length;
   const cells = [...row];
   while (cells.length < CHECKPOINTS_HEADER.length) cells.push("");
-  if (rawLen === 8) {
-    // Legacy 8-col row (no display_name)
+  const rawLen = row.length;
+  // Distinguish legacy 8-col vs current 9-col rows robustly:
+  // - Legacy: index 5 is createdAt (ISO), index 6 updatedAt (ISO)
+  // - Current: index 5 is displayName (not ISO, often ""), index 6 createdAt (ISO)
+  // Sheets API omits trailing empty cells, so a current row with empty
+  // displayName and empty deleted_at appears as 8 cells but with "" at 5.
+  // We use ISO heuristic, not rawLen, to avoid misclassifying.
+  const maybeDisplayName = (cells[5] ?? "").trim();
+  const maybeCreatedAt = (cells[6] ?? "").trim();
+  const isLegacyRow = isIsoTimestamp(maybeDisplayName) && isIsoTimestamp(maybeCreatedAt);
+  // Fallback: if header was legacy, all rows with 8 cells are legacy; but
+  // for mixed sheets (legacy header + new 9-col rows with empty displayName
+  // trimmed to 8), the ISO heuristic above correctly identifies them as
+  // current (since index5 is "" not ISO).
+  if (isLegacyRow || (rawLen === 8 && isIsoTimestamp((cells[5] ?? "").trim()))) {
+    // Legacy 8-col row (no display_name): [id,note,userId,email,role,createdAt,updatedAt,deletedAt]
     const [id, note, userId, userEmail, rawRole, createdAt, updatedAt, rawDeleted] = cells.map((c) => (c ?? "").trim());
     if (!id) return null;
     return {

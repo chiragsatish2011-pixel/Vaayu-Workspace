@@ -134,6 +134,8 @@ const EMBEDDED_BOOTSTRAP = [
 	"avatar_drive_id" text,
 	"avatar_file_name" text,
 	"has_completed_onboarding" boolean DEFAULT false NOT NULL,
+	"department" text,
+	"job_title" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );`,
@@ -201,6 +203,8 @@ export async function runBootstrap(
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_drive_id" text`,
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_file_name" text`,
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "has_completed_onboarding" boolean DEFAULT false NOT NULL`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "department" text`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "job_title" text`,
     ];
     for (const stmt of alters) {
       try {

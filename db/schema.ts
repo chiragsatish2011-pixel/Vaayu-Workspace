@@ -20,6 +20,8 @@ export const users = pgTable("users", {
   avatarDriveId: text("avatar_drive_id"),
   avatarFileName: text("avatar_file_name"),
   hasCompletedOnboarding: boolean("has_completed_onboarding").default(false).notNull(),
+  department: text("department"),
+  jobTitle: text("job_title"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
