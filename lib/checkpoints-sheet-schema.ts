@@ -27,6 +27,7 @@ export const CHECKPOINTS_HEADER = [
   "created_at",
   "updated_at",
   "deleted_at",
+  "content_json",
 ] as const;
 
 // Old 8-col header (pre-displayName) — still accepted for backwards compat
@@ -51,6 +52,7 @@ export interface CheckpointRecord {
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
   deletedAt: string | null; // ISO timestamp or null
+  contentJson?: string | null; // Tiptap JSON for mentions — plain note stays readable in Sheet
 }
 
 export interface CheckpointActor {
@@ -65,6 +67,10 @@ export function headerMatches(firstRow: string[] | undefined): boolean {
   if (!firstRow) return false;
   const isCurrent = CHECKPOINTS_HEADER.every((col, i) => firstRow[i] === col);
   if (isCurrent) return true;
+  // Accept 9-col header (pre-content_json) as current for backwards compat — content_json is optional last column
+  const nineHeader = CHECKPOINTS_HEADER.slice(0, 9);
+  const isNine = nineHeader.every((col, i) => firstRow[i] === col) && (firstRow.length === 9 || firstRow[9] === undefined || firstRow[9] === "content_json");
+  if (isNine) return true;
   const isLegacy = CHECKPOINTS_HEADER_LEGACY.every((col, i) => firstRow[i] === col);
   return isLegacy;
 }
@@ -81,7 +87,7 @@ export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
   const cells = [...row];
   while (cells.length < CHECKPOINTS_HEADER.length) cells.push("");
   const rawLen = row.length;
-  // Distinguish legacy 8-col vs current 9-col rows robustly:
+  // Distinguish legacy 8-col vs current 9/10-col rows robustly:
   // - Legacy: index 5 is createdAt (ISO), index 6 updatedAt (ISO)
   // - Current: index 5 is displayName (not ISO, often ""), index 6 createdAt (ISO)
   // Sheets API omits trailing empty cells, so a current row with empty
@@ -108,9 +114,11 @@ export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
       createdAt,
       updatedAt,
       deletedAt: rawDeleted ? rawDeleted : null,
+      contentJson: null,
     };
   }
-  const [id, note, userId, userEmail, rawRole, displayName, createdAt, updatedAt, rawDeleted] = cells
+  // Current 9/10-col: [id,note,userId,email,role,displayName,createdAt,updatedAt,deletedAt,content_json?]
+  const [id, note, userId, userEmail, rawRole, displayName, createdAt, updatedAt, rawDeleted, rawContentJson] = cells
     .map((c) => (c ?? "").trim());
   if (!id) return null;
   return {
@@ -123,6 +131,7 @@ export function parseCheckpointRow(row: string[]): CheckpointRecord | null {
     createdAt,
     updatedAt,
     deletedAt: rawDeleted ? rawDeleted : null,
+    contentJson: rawContentJson || null,
   };
 }
 
@@ -138,6 +147,7 @@ export function toSheetRow(record: CheckpointRecord): string[] {
     record.createdAt,
     record.updatedAt,
     record.deletedAt ?? "",
+    record.contentJson ?? "",
   ];
 }
 

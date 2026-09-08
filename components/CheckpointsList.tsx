@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { formatDateTime } from "@/lib/format";
+import { extractPlainTextFromTiptap, renderTiptapJsonToReact, TiptapEditor } from "@/components/mentions/TiptapEditor";
 import { StartContextCall } from "@/components/calls/StartContextCall";
 
 export interface CheckpointItem {
@@ -17,6 +19,7 @@ export interface CheckpointItem {
   userRole: "admin" | "member";
   displayName?: string | null;
   avatarDriveId?: string | null;
+  contentJson?: string | null;
 }
 
 export interface CheckpointViewer {
@@ -31,7 +34,6 @@ const EXAMPLE_NOTES = [
   "added checkpoints section for team progress",
 ];
 
-// date formatting is now via shared lib/format.ts — single source of truth
 const formatDate = formatDateTime;
 
 export function CheckpointsList({
@@ -44,17 +46,20 @@ export function CheckpointsList({
   notice?: string | null;
 }) {
   const [items, setItems] = useState<CheckpointItem[]>(initialItems);
-  // Sync when server enriches after profile rename (accurate update: Chirag -> chirag S must reflect everywhere without manual sheet edit)
   useEffect(() => {
     setItems(initialItems);
   }, [initialItems]);
-  const [note, setNote] = useState("");
+  const [createDraft, setCreateDraft] = useState<{ text: string; json: unknown } | null>(null);
+  const [createKey, setCreateKey] = useState(0);
+  const [createInitial, setCreateInitial] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [editDraft, setEditDraft] = useState<{ text: string; json: unknown } | null>(null);
+  const [editKey, setEditKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const router = useRouter();
 
   function canModerate(item: CheckpointItem): boolean {
     return item.userId === currentUser.id || currentUser.role === "admin";
@@ -62,7 +67,8 @@ export function CheckpointsList({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = note.trim();
+    const payload = createDraft;
+    const trimmed = payload?.text?.trim() ?? "";
     if (!trimmed) return;
 
     setIsSubmitting(true);
@@ -72,7 +78,7 @@ export function CheckpointsList({
       const res = await fetch("/api/checkpoints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: trimmed }),
+        body: JSON.stringify({ note: trimmed, contentJson: payload?.json ? JSON.stringify(payload.json) : null }),
       });
 
       const data = await res.json();
@@ -81,7 +87,9 @@ export function CheckpointsList({
       }
 
       setItems((prev) => [data.checkpoint, ...prev]);
-      setNote("");
+      setCreateDraft(null);
+      setCreateInitial(null);
+      setCreateKey((k) => k + 1);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -91,12 +99,24 @@ export function CheckpointsList({
 
   function startEditing(item: CheckpointItem) {
     setEditingId(item.id);
-    setDraft(item.note);
+    if (item.contentJson) {
+      try {
+        const parsed = JSON.parse(item.contentJson);
+        const text = extractPlainTextFromTiptap(parsed) || item.note;
+        setEditDraft({ text, json: parsed });
+      } catch {
+        setEditDraft({ text: item.note, json: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: item.note }] }] } });
+      }
+    } else {
+      setEditDraft({ text: item.note, json: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: item.note }] }] } });
+    }
+    setEditKey((k) => k + 1);
     setError(null);
   }
 
   async function handleUpdate(item: CheckpointItem) {
-    const trimmed = draft.trim();
+    const payload = editDraft;
+    const trimmed = payload?.text?.trim() ?? "";
     if (!trimmed || isSaving) return;
 
     setIsSaving(true);
@@ -106,7 +126,7 @@ export function CheckpointsList({
       const res = await fetch("/api/checkpoints", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, note: trimmed }),
+        body: JSON.stringify({ id: item.id, note: trimmed, contentJson: payload?.json ? JSON.stringify(payload.json) : null }),
       });
 
       const data = await res.json();
@@ -118,7 +138,7 @@ export function CheckpointsList({
         prev.map((entry) => (entry.id === item.id ? data.checkpoint : entry))
       );
       setEditingId(null);
-      setDraft("");
+      setEditDraft(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -153,7 +173,7 @@ export function CheckpointsList({
       setItems((prev) => prev.filter((entry) => entry.id !== item.id));
       if (editingId === item.id) {
         setEditingId(null);
-        setDraft("");
+        setEditDraft(null);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -161,6 +181,28 @@ export function CheckpointsList({
       setDeletingId(null);
     }
   }
+
+  const handleMentionClick = (type: string, id: string) => {
+    if (type === "person") router.push("/admin");
+    else if (type === "project") router.push("/projects");
+    else if (type === "file" || type === "folder") router.push(`/files?highlight=${encodeURIComponent(id)}`);
+    else if (type === "checkpoint") {
+      const el = document.getElementById(`checkpoint-${id}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      else router.push(`/checkpoints#${encodeURIComponent(id)}`);
+    }
+  };
+
+  const renderNote = (item: CheckpointItem) => {
+    if (item.contentJson) {
+      try {
+        const json = JSON.parse(item.contentJson);
+        const rendered = renderTiptapJsonToReact(json, handleMentionClick);
+        if (rendered) return <div className="mt-2.5 text-sm leading-relaxed text-charcoal">{rendered}</div>;
+      } catch {}
+    }
+    return <p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-charcoal">{item.note}</p>;
+  };
 
   return (
     <div className="space-y-8">
@@ -179,25 +221,24 @@ export function CheckpointsList({
           Add a Checkpoint
         </h2>
         <p className="mt-1 text-sm text-steel">
-          Share a quick update or note on what you just completed or improved.
+          Share a quick update or note on what you just completed or improved. Use @ to mention people, projects, files, or checkpoints.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
-            <label htmlFor="checkpoint-note" className="sr-only">
-              Checkpoint note
-            </label>
-            <textarea
-              id="checkpoint-note"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. made landingpage of vaayu smoother..."
-              className="w-full rounded-xl border border-hairline bg-fog p-3.5 text-sm outline-none transition-colors focus:border-ink focus:bg-canvas"
+            <TiptapEditor
+              key={createKey}
+              placeholder="e.g. made landingpage of vaayu smoother… @ to mention"
+              initialText={createInitial ?? undefined}
+              onChange={setCreateDraft}
+              onSubmit={(content) => {
+                setCreateDraft(content);
+                setTimeout(() => handleSubmit({ preventDefault: () => {} } as React.FormEvent), 0);
+              }}
             />
           </div>
 
-          {/* Preset Suggestions */}
+          {/* Preset Suggestions — preserved alongside Tiptap */}
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-stone">
               Quick Suggestions
@@ -207,7 +248,13 @@ export function CheckpointsList({
                 <button
                   key={example}
                   type="button"
-                  onClick={() => setNote(example)}
+                  onClick={() => {
+                    const json = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: example }] }] };
+                    setCreateDraft({ text: example, json });
+                    setCreateInitial(example);
+                    setCreateKey((k) => k + 1);
+                    setTimeout(() => setCreateInitial(null), 0);
+                  }}
                   className="rounded-lg border border-hairline bg-fog px-2.5 py-1 text-xs text-charcoal transition-colors hover:border-ink hover:bg-canvas"
                 >
                   &ldquo;{example}&rdquo;
@@ -223,7 +270,7 @@ export function CheckpointsList({
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              disabled={isSubmitting || !note.trim()}
+              disabled={isSubmitting || !createDraft?.text?.trim()}
               className="press inline-flex h-10 items-center justify-center rounded-full bg-ink px-6 text-sm font-semibold text-white transition-colors hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? "Posting..." : "Post Checkpoint"}
@@ -266,7 +313,7 @@ export function CheckpointsList({
                   new Date(item.createdAt).getTime() + 1000;
 
               return (
-                <div key={item.id} className="relative flex items-start gap-4">
+                <div key={item.id} id={`checkpoint-${item.id}`} className="relative flex items-start gap-4">
                   {/* Timeline avatar — deterministic color from stable userId/email, display name */}
                   <span className="relative z-10 shrink-0 rounded-full shadow-sm ring-4 ring-canvas">
                     <UserAvatar displayName={item.displayName} email={item.userEmail} userId={item.userId} avatarDriveId={item.avatarDriveId} size={40} />
@@ -293,19 +340,23 @@ export function CheckpointsList({
                     </div>
                     {isEditing ? (
                       <div className="mt-2.5 space-y-3">
-                        <textarea
-                          rows={3}
-                          value={draft}
-                          onChange={(e) => setDraft(e.target.value)}
-                          aria-label="Edit checkpoint note"
-                          className="w-full rounded-xl border border-hairline bg-canvas p-3 text-sm outline-none transition-colors focus:border-ink"
+                        <TiptapEditor
+                          key={editKey}
+                          placeholder="Edit checkpoint… @ to mention"
+                          initialContentJson={item.contentJson ?? null}
+                          initialText={!item.contentJson ? item.note : undefined}
+                          onChange={setEditDraft}
+                          onSubmit={(content) => {
+                            setEditDraft(content);
+                            setTimeout(() => handleUpdate(item), 0);
+                          }}
                         />
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => {
                               setEditingId(null);
-                              setDraft("");
+                              setEditDraft(null);
                             }}
                             disabled={isSaving}
                             className="press inline-flex h-9 items-center justify-center rounded-full border border-hairline px-4 text-sm font-medium text-charcoal transition-colors hover:border-ink disabled:opacity-50"
@@ -315,7 +366,7 @@ export function CheckpointsList({
                           <button
                             type="button"
                             onClick={() => handleUpdate(item)}
-                            disabled={isSaving || !draft.trim()}
+                            disabled={isSaving || !editDraft?.text?.trim()}
                             className="press inline-flex h-9 items-center justify-center rounded-full bg-ink px-4 text-sm font-semibold text-white transition-colors hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {isSaving ? "Saving..." : "Save"}
@@ -323,9 +374,7 @@ export function CheckpointsList({
                         </div>
                       </div>
                     ) : (
-                      <p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-charcoal">
-                        {item.note}
-                      </p>
+                      renderNote(item)
                     )}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <StartContextCall context="checkpoint" contextId={item.id} label="Start Call" />

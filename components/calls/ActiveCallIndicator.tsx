@@ -89,17 +89,29 @@ export function StandaloneActiveCalls({ onJoin }: { onJoin: (call: ActiveCall) =
       <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Active calls</p>
       {calls.map((c) => (
         <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-fog/50 px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold capitalize">
-              {c.type} call · <span className="font-mono text-xs text-steel">{c.context}{c.contextId ? `:${c.contextId.slice(0, 6)}` : ""}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold capitalize truncate">
+              {c.type} call <span className="font-mono text-xs font-normal text-steel">· {c.context}{c.contextId ? `:${c.contextId.slice(0, 6)}` : ""}</span>
             </p>
-            <p className="font-mono text-xs text-steel">{new Date(c.dailyRoomName.slice(-8)).toString().slice(0, 24)} • {c.dailyRoomName}</p>
+            <p className="font-mono text-xs text-steel">{timeAgo((c as unknown as { createdAt?: string }).createdAt)}</p>
           </div>
-          <button onClick={() => onJoin(c)} className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white">
+          <button onClick={() => onJoin(c)} className="shrink-0 rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white">
             Join
           </button>
         </div>
       ))}
     </div>
   );
+}
+
+function timeAgo(iso?: string): string {
+  if (!iso) return "Active now";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "Just now";
+  if (m === 1) return "1 minute ago";
+  if (m < 60) return `${m} minutes ago`;
+  const h = Math.floor(m / 60);
+  if (h === 1) return "1 hour ago";
+  return `${h} hours ago`;
 }

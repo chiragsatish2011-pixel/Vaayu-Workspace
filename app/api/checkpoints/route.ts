@@ -83,7 +83,23 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const note = typeof body.note === "string" ? body.note.trim() : "";
+    // Support both plain note and structured Tiptap JSON (for @mentions)
+    const noteRaw = typeof body.note === "string" ? body.note : typeof body.content === "string" ? body.content : "";
+    const note = noteRaw.trim();
+    const contentJsonRaw = body.contentJson ?? body.content_json ?? null;
+    let contentJson: string | null = null;
+    if (contentJsonRaw !== null && contentJsonRaw !== undefined) {
+      if (typeof contentJsonRaw === "string") {
+        try {
+          JSON.parse(contentJsonRaw);
+          contentJson = contentJsonRaw;
+        } catch {
+          return NextResponse.json({ error: "Invalid contentJson." }, { status: 400 });
+        }
+      } else if (typeof contentJsonRaw === "object") {
+        contentJson = JSON.stringify(contentJsonRaw);
+      }
+    }
 
     if (!note) {
       return NextResponse.json(
@@ -92,7 +108,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const rawCheckpoint = await createCheckpoint(user, note);
+    const rawCheckpoint = await createCheckpoint(user, note, contentJson);
     // Enrich so response carries current avatar/displayName (accurate update after rename)
     const [checkpoint] = await enrichCheckpoints([rawCheckpoint as unknown as { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }]);
     return NextResponse.json({ checkpoint }, { status: 201 });
@@ -110,7 +126,24 @@ export async function PATCH(req: Request) {
   try {
     const body = await req.json();
     const id = typeof body.id === "string" ? body.id : "";
-    const note = typeof body.note === "string" ? body.note.trim() : "";
+    const noteRaw = typeof body.note === "string" ? body.note : typeof body.content === "string" ? body.content : "";
+    const note = noteRaw.trim();
+    const contentJsonRaw = body.contentJson ?? body.content_json ?? null;
+    let contentJson: string | null | undefined = undefined;
+    if (contentJsonRaw !== null && contentJsonRaw !== undefined) {
+      if (typeof contentJsonRaw === "string") {
+        try {
+          JSON.parse(contentJsonRaw);
+          contentJson = contentJsonRaw;
+        } catch {
+          return NextResponse.json({ error: "Invalid contentJson." }, { status: 400 });
+        }
+      } else if (typeof contentJsonRaw === "object") {
+        contentJson = JSON.stringify(contentJsonRaw);
+      } else {
+        contentJson = null;
+      }
+    }
 
     if (!id) {
       return NextResponse.json(
@@ -125,7 +158,7 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const rawCheckpoint = await updateCheckpoint(user, id, note);
+    const rawCheckpoint = await updateCheckpoint(user, id, note, contentJson);
     const [checkpoint] = await enrichCheckpoints([rawCheckpoint as unknown as { userId: string; displayName: string | null; userEmail: string; avatarDriveId?: string | null }]);
     return NextResponse.json({ checkpoint });
   } catch (err) {

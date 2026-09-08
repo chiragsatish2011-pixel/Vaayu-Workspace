@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FileBrowser } from "@/components/FileBrowser";
-import { FilesUploader } from "@/components/FilesUploader";
 
 /**
- * Team Files manager — root folder resolution + upload staging + the
- * shared file browser. The browser root is the SAME locked team folder
- * Projects publishing uses (resolved server-side via /api/drive/root, so
- * the env var never reaches the client). Uploads, downloads, zips and
- * trash all reuse the exact pipelines built for Projects — this component
- * only wires them together.
+ * Team Files manager — Drive-identical file browser.
+ *
+ * Resolves the SAME locked team folder Projects publishing uses (via
+ * /api/drive/root, so the env var never reaches the client). Upload
+ * interaction now matches Drive's real pattern: drag-and-drop works
+ * directly onto the file list/grid area itself, and the "+ New"
+ * primary action offers "New folder" / "File upload" / "Folder upload"
+ * as a dropdown — no persistent large drop-zone card sitting above the
+ * list (that marketing-card pattern was removed to match Drive).
+ * All pipelines (upload, download, zip, trash, rename, move) still
+ * reuse the exact code built for Projects.
  */
 export function FilesManager() {
   const [root, setRoot] = useState<{ id: string; name: string } | null>(null);
@@ -70,17 +74,15 @@ export function FilesManager() {
   }
 
   return (
-    <div className="space-y-6">
-      <FilesUploader onUploaded={handleUploaded} />
-      <FileBrowser
-        projectDriveId={root.id}
-        projectName={root.name}
-        contextNoun="folder"
-        emptyText="No files in the team folder yet — upload above to get started."
-        refreshKey={refreshKey}
-        manage
-        defaultView="grid"
-      />
-    </div>
+    <FileBrowser
+      projectDriveId={root.id}
+      projectName={root.name}
+      contextNoun="folder"
+      emptyText="No files yet — use New to create a folder or drag files here to upload."
+      refreshKey={refreshKey}
+      onUploaded={handleUploaded}
+      manage
+      defaultView="grid"
+    />
   );
 }

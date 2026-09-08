@@ -4,6 +4,15 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatBytes } from "@/components/UploadProgressBar";
 import { FolderIcon, BoxIcon, GridIcon, ListIcon, MusicIcon, PlayIcon, DocIcon, ImageIcon } from "@/components/icons";
+import {
+  collectFilesFromDrop,
+  collectFilesFromInput,
+  pickedBatchBytes,
+  pickedBatchRoots,
+  type PickedUploadFile,
+} from "@/components/folderWalk";
+import { useFolderUpload } from "@/components/useFolderUpload";
+import { useUploads } from "@/components/UploadManager";
 
 /* ── Types ────────────────────────────────────────────────────────── */
 export interface BrowseFile {
@@ -265,6 +274,7 @@ export function FileBrowser({
   manage = false,
   defaultView = "list",
   onClose,
+  onUploaded,
 }: {
   projectId?: string;
   projectDriveId: string;
@@ -283,6 +293,8 @@ export function FileBrowser({
   /** Initial view. Files page uses grid; Projects modal keeps list. */
   defaultView?: "grid" | "list";
   onClose?: () => void;
+  /** Called after a successful upload so the parent can bump refreshKey (fresh fetch). */
+  onUploaded?: () => void;
 }) {
   void projectId;
   const [data, setData] = useState<BrowseResponse | null>(null);
@@ -313,47 +325,155 @@ export function FileBrowser({
   const [gridPath, setGridPath] = useState<string[]>([]);
   const [gridLimit, setGridLimit] = useState(GRID_PAGE_SIZE);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  // Drive-identical "+ New" + drag upload (manage only). No persistent
+  // drop-zone card — drag works directly onto the list/grid area.
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const { track } = useUploads();
+  const { runFolderUpload } = useFolderUpload();
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   // Fetch browse data (extracted so delete/upload flows can refetch on demand)
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // refreshKey > 0 means "something changed elsewhere" (upload landed,
-      // trash completed) → fresh=1 bypasses the 30s server listing cache so
-      // the next paint shows truth. Plain opens stay cached and fast.
-      const url =
-        `/api/drive/browse?id=${encodeURIComponent(projectDriveId)}` +
-        (refreshKey > 0 ? "&fresh=1" : "");
-      const r = await fetch(url, { cache: "no-store" });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(j?.error || "Could not load folder.");
-      setData(j as BrowseResponse);
-      // Default: expand first level only for large projects, or all for small
-      // Requirement 3: collapsed default, only first level expanded for huge
-      const tree = buildTree((j as BrowseResponse).files, (j as BrowseResponse).root.name, (j as BrowseResponse).root.id);
-      const firstLevel = Array.from(tree.children.values())
-        .filter((n) => n.isFolder)
-        .slice(0, 3)
-        .map((n) => n.relativePath);
-      // If small project (<100 files), expand first level; if huge, keep collapsed
-      if ((j as BrowseResponse).fileCount < 100) {
-        setExpanded(new Set(firstLevel));
-      } else {
-        setExpanded(new Set()); // collapsed for large
+  const load = useCallback(
+    async (forceFresh?: boolean) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // refreshKey > 0 or forceFresh means "something changed elsewhere"
+        // (upload landed, trash completed) → fresh=1 bypasses the 30s server
+        // listing cache so the next paint shows truth. Plain opens stay cached
+        // and fast.
+        const useFresh = Boolean(forceFresh) || refreshKey > 0;
+        const url =
+          `/api/drive/browse?id=${encodeURIComponent(projectDriveId)}` +
+          (useFresh ? "&fresh=1" : "");
+        const r = await fetch(url, { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(j?.error || "Could not load folder.");
+        setData(j as BrowseResponse);
+        // Default: expand first level only for large projects, or all for small
+        // Requirement 3: collapsed default, only first level expanded for huge
+        const tree = buildTree(
+          (j as BrowseResponse).files,
+          (j as BrowseResponse).root.name,
+          (j as BrowseResponse).root.id
+        );
+        const firstLevel = Array.from(tree.children.values())
+          .filter((n) => n.isFolder)
+          .slice(0, 3)
+          .map((n) => n.relativePath);
+        // If small project (<100 files), expand first level; if huge, keep collapsed
+        if ((j as BrowseResponse).fileCount < 100) {
+          setExpanded(new Set(firstLevel));
+        } else {
+          setExpanded(new Set()); // collapsed for large
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load.");
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load.");
-    } finally {
-      setLoading(false);
-    }
-  }, [projectDriveId, refreshKey]);
+    },
+    [projectDriveId, refreshKey]
+  );
 
   useEffect(() => {
     // Fire-and-forget is safe here: React 18+ ignores state updates after
     // unmount, and every load() run is idempotent (full listing replace).
     void load();
   }, [load]);
+
+  // ── Drive-identical upload (manage only) ──────────────────────────
+  // Drag-and-drop works directly onto the list/grid area itself, and
+  // the "+ New" dropdown offers File/Folder upload. This reuses the
+  // SAME resilient pipeline as Projects (shared useFolderUpload hook)
+  // and the SAME global toast — no new upload logic.
+  const startDriveUpload = useCallback(
+    (picked: PickedUploadFile[]) => {
+      if (picked.length === 0) return;
+      const totalBytes = pickedBatchBytes(picked);
+      const label =
+        picked.length === 1
+          ? `Upload "${picked[0]!.file.name}" to ${projectName}`
+          : `Upload ${picked.length} files to ${projectName}`;
+      setUploading(true);
+      setUploadError(null);
+      const { finished } = track(label, totalBytes, async (report, setFinalizing) => {
+        const sentBaseRef = { value: 0 };
+        const tree = await runFolderUpload(picked, report, sentBaseRef);
+        setFinalizing();
+        if (tree.succeeded === 0) {
+          throw new Error(tree.failed[0]?.error || "Upload failed — nothing reached Drive.");
+        }
+        if (tree.failed.length > 0) {
+          console.warn(
+            `[FileBrowser] partial upload: ${tree.succeeded}/${picked.length} succeeded, ${tree.failed.length} failed.`
+          );
+        }
+      });
+      finished.then(
+        () => {
+          setUploading(false);
+          // Prefer parent's refreshKey bump (fresh fetch), else force fresh directly.
+          if (onUploaded) onUploaded();
+          else void load(true);
+        },
+        (err: unknown) => {
+          setUploading(false);
+          setUploadError(err instanceof Error ? err.message : "Upload failed.");
+        }
+      );
+    },
+    [projectName, track, runFolderUpload, onUploaded, load]
+  );
+
+  const handleDriveFilesChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const picked = collectFilesFromInput(e.target.files);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (picked.length > 0) startDriveUpload(picked);
+    },
+    [startDriveUpload]
+  );
+
+  const handleDriveFolderChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const picked = collectFilesFromInput(e.target.files);
+      if (folderInputRef.current) folderInputRef.current.value = "";
+      if (picked.length > 0) startDriveUpload(picked);
+    },
+    [startDriveUpload]
+  );
+
+  const handleDriveDrop = useCallback(
+    async (e: React.DragEvent) => {
+      if (!manage) return;
+      e.preventDefault();
+      setDragActive(false);
+      setScanning(true);
+      setUploadError(null);
+      try {
+        const picked = await collectFilesFromDrop(e.dataTransfer);
+        if (picked.length === 0) {
+          setUploadError("That drop contained no files — try different files or a folder.");
+          return;
+        }
+        startDriveUpload(picked);
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Could not read the dropped items.");
+      } finally {
+        setScanning(false);
+      }
+    },
+    [manage, startDriveUpload]
+  );
 
   const tree = useMemo(() => {
     if (!data) return null;
@@ -830,11 +950,31 @@ export function FileBrowser({
   const totalLabel = `${data.fileCount} files · ${formatBytes(data.totalBytes)}`;
 
   return (
-    <div className="rounded-2xl border border-hairline bg-canvas overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline-soft bg-fog/50 px-4 py-3">
-        <div>
-          <h3 className="font-display text-sm font-bold text-ink">{projectName}</h3>
+    <div className="relative rounded-2xl border border-hairline bg-canvas overflow-hidden">
+      {/* Hidden Drive upload inputs (manage only) — no persistent drop-zone card */}
+      {manage && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleDriveFilesChange}
+            className="hidden"
+            aria-label="Upload files"
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            onChange={handleDriveFolderChange}
+            className="hidden"
+            aria-label="Upload folder"
+          />
+        </>
+      )}
+      {/* Header — Drive-identical: title + counts, "+ New" dropdown, actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline-soft bg-canvas px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-display text-sm font-bold text-ink">{projectName}</h3>
           <p className="font-mono text-[11px] text-steel">{totalLabel}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -862,18 +1002,76 @@ export function FileBrowser({
           )}
           {manage && (
             <>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNewMenuOpen((v) => !v)}
+                  disabled={mutating || uploading}
+                  aria-expanded={newMenuOpen}
+                  aria-haspopup="menu"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-charcoal disabled:opacity-50"
+                  title="Create or upload"
+                >
+                  <span aria-hidden className="text-sm leading-none">
+                    +
+                  </span>{" "}
+                  New
+                </button>
+                {newMenuOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-hidden
+                      tabIndex={-1}
+                      onClick={() => setNewMenuOpen(false)}
+                      className="fixed inset-0 z-10 cursor-default bg-transparent"
+                    />
+                    <div
+                      role="menu"
+                      className="absolute left-0 top-9 z-20 w-48 overflow-hidden rounded-xl border border-hairline bg-canvas py-1 shadow-xl"
+                    >
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          setNewFolderParent({ id: data.root.id, name: data.root.name });
+                        }}
+                        disabled={mutating}
+                        className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-fog disabled:opacity-50"
+                      >
+                        New folder
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          fileInputRef.current?.click();
+                        }}
+                        disabled={mutating || uploading}
+                        className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-fog disabled:opacity-50"
+                      >
+                        File upload
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          folderInputRef.current?.click();
+                        }}
+                        disabled={mutating || uploading}
+                        className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-fog disabled:opacity-50"
+                      >
+                        Folder upload
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               <button
-                onClick={() =>
-                  setNewFolderParent({ id: data.root.id, name: data.root.name })
-                }
-                disabled={mutating}
-                className="rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white hover:bg-charcoal disabled:opacity-50"
-                title="Create a new folder here"
-              >
-                + New folder
-              </button>
-              <button
-                onClick={() => void load()}
+                onClick={() => void load(true)}
                 disabled={loading || mutating}
                 className="grid h-7 w-7 place-items-center rounded-full border border-hairline text-steel transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
                 title="Reload from Drive"
@@ -933,6 +1131,28 @@ export function FileBrowser({
           )}
         </div>
       </div>
+      {manage && uploadError && (
+        <div className="flex items-center justify-between gap-3 border-b border-hairline-soft bg-red-50 px-4 py-2 font-mono text-xs text-red-700">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="text-red-700 underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {manage && scanning && (
+        <div className="border-b border-hairline-soft bg-fog px-4 py-2 font-mono text-xs text-steel">
+          Reading dropped items…
+        </div>
+      )}
+      {manage && uploading && (
+        <div className="border-b border-hairline-soft bg-azure-soft px-4 py-2 font-mono text-xs text-azure-deep">
+          Uploading in background — check progress in the toast at bottom right…
+        </div>
+      )}
       {/* Sort + view toolbar (shared by grid and list) */}
       <div className="flex items-center justify-between gap-2 border-b border-hairline-soft px-4 py-2">
         <button
@@ -991,60 +1211,97 @@ export function FileBrowser({
       )}
 
       {view === "grid" && gridNav ? (
-        <div className="bg-canvas px-4 py-3">
-          {/* Breadcrumb */}
-          <nav
-            aria-label="Current folder"
-            className="mb-3 flex min-w-0 flex-wrap items-center gap-1 text-[13px]"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setGridPath([]);
-                setGridLimit(GRID_PAGE_SIZE);
-                setOpenMenu(null);
-              }}
-              title={data.root.name}
-              aria-current={gridNav.valid.length === 0 ? "page" : undefined}
-              className={`min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 font-semibold transition-colors hover:bg-fog ${
-                gridNav.valid.length === 0 ? "text-ink" : "text-steel hover:text-ink"
-              }`}
+        <div
+          className="relative bg-canvas px-4 py-3"
+          onDragOver={
+            manage
+              ? (e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }
+              : undefined
+          }
+          onDragLeave={manage ? () => setDragActive(false) : undefined}
+          onDrop={manage ? handleDriveDrop : undefined}
+        >
+          {/* Drag overlay — Drive-identical: drop directly onto the list/grid */}
+          {manage && dragActive && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-ink bg-ink/5 backdrop-blur-[1px]">
+              <p className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white shadow">
+                Drop files or folder here to upload
+              </p>
+            </div>
+          )}
+          {/* Breadcrumb — every segment clickable + dedicated back/up arrow (bug fix: no dead-ends) */}
+          <div className="mb-3 flex items-center gap-2">
+            {gridNav.valid.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setGridPath((prev) => prev.slice(0, -1));
+                  setGridLimit(GRID_PAGE_SIZE);
+                  setOpenMenu(null);
+                }}
+                aria-label="Go up one level"
+                title="Go up one level"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-hairline bg-canvas text-sm leading-none text-steel transition-colors hover:border-ink hover:text-ink"
+              >
+                <span aria-hidden>←</span>
+              </button>
+            ) : (
+              <span
+                aria-hidden
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-hairline-soft bg-fog/50 text-sm leading-none text-stone"
+                title="At root"
+              >
+                ←
+              </span>
+            )}
+            <nav
+              aria-label="Breadcrumb"
+              className="flex min-w-0 flex-wrap items-center gap-1 text-[13px]"
             >
-              {data.root.name}
-            </button>
-            {gridNav.valid.map((seg, i) => {
-              const last = i === gridNav.valid.length - 1;
-              return (
+              <button
+                type="button"
+                onClick={() => {
+                  setGridPath([]);
+                  setGridLimit(GRID_PAGE_SIZE);
+                  setOpenMenu(null);
+                }}
+                title={data.root.name}
+                aria-current={gridNav.valid.length === 0 ? "page" : undefined}
+                className={`min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 font-semibold transition-colors hover:bg-fog ${
+                  gridNav.valid.length === 0 ? "text-ink" : "text-steel hover:text-ink"
+                }`}
+              >
+                {data.root.name}
+              </button>
+              {gridNav.valid.map((seg, i) => (
                 <span key={`${i}-${seg}`} className="flex min-w-0 items-center gap-1">
                   <span aria-hidden className="text-stone">
                     /
                   </span>
-                  {last ? (
-                    <span
-                      aria-current="page"
-                      title={seg}
-                      className="min-w-0 max-w-[160px] truncate px-1 py-0.5 font-semibold text-ink"
-                    >
-                      {seg}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGridPath(gridNav.valid.slice(0, i + 1));
-                        setGridLimit(GRID_PAGE_SIZE);
-                        setOpenMenu(null);
-                      }}
-                      title={seg}
-                      className="min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 text-steel transition-colors hover:bg-fog hover:text-ink"
-                    >
-                      {seg}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGridPath(gridNav.valid.slice(0, i + 1));
+                      setGridLimit(GRID_PAGE_SIZE);
+                      setOpenMenu(null);
+                    }}
+                    title={seg}
+                    aria-current={i === gridNav.valid.length - 1 ? "page" : undefined}
+                    className={`min-w-0 max-w-[160px] truncate rounded px-1 py-0.5 transition-colors hover:bg-fog ${
+                      i === gridNav.valid.length - 1
+                        ? "font-semibold text-ink"
+                        : "text-steel hover:text-ink"
+                    }`}
+                  >
+                    {seg}
+                  </button>
                 </span>
-              );
-            })}
-          </nav>
+              ))}
+            </nav>
+          </div>
 
           {/* Folders — compact horizontal cards */}
           {gridNav.folders.length > 0 && (

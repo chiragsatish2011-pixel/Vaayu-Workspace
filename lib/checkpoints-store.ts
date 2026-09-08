@@ -52,6 +52,7 @@ export interface CheckpointView {
   userEmail: string;
   userRole: "admin" | "member";
   displayName: string | null;
+  contentJson?: string | null;
 }
 
 export class CheckpointNotFoundError extends Error {
@@ -92,6 +93,7 @@ function toView(record: CheckpointRecord): CheckpointView {
     userEmail: record.userEmail,
     userRole: record.userRole,
     displayName: record.displayName ?? null,
+    contentJson: record.contentJson ?? null,
   };
 }
 
@@ -116,7 +118,7 @@ async function readSheet(): Promise<{
     values = await sheetsGetValues(
       token,
       spreadsheetId,
-      `${CHECKPOINTS_TAB}!A1:I`
+      `${CHECKPOINTS_TAB}!A1:J`
     );
   } catch (err) {
     // A missing tab surfaces from the API as a 400 range error — translate
@@ -194,7 +196,8 @@ function findLiveRow(
 
 export async function createCheckpoint(
   actor: CheckpointActor,
-  note: string
+  note: string,
+  contentJson?: string | null
 ): Promise<CheckpointView> {
   const trimmed = note.trim();
   if (!trimmed) throw new Error("Note content is required.");
@@ -212,6 +215,7 @@ export async function createCheckpoint(
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
+    contentJson: contentJson ?? null,
   };
   await sheetsAppendRow(
     token,
@@ -226,7 +230,8 @@ export async function createCheckpoint(
 export async function updateCheckpoint(
   actor: CheckpointActor,
   id: string,
-  note: string
+  note: string,
+  contentJson?: string | null
 ): Promise<CheckpointView> {
   const trimmed = note.trim();
   if (!trimmed) throw new Error("Note content is required.");
@@ -235,13 +240,14 @@ export async function updateCheckpoint(
   const { spreadsheetId, rows } = await readSheet();
   const hit = findLiveRow(rows, actor, id);
   hit.record.note = trimmed;
+  if (contentJson !== undefined) hit.record.contentJson = contentJson;
   hit.record.updatedAt = nowIso();
 
   const token = await getSheetsAccessToken();
   await sheetsUpdateRow(
     token,
     spreadsheetId,
-    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:I${hit.rowNumber}`,
+    `${CHECKPOINTS_TAB}!A${hit.rowNumber}:J${hit.rowNumber}`,
     toSheetRow(hit.record)
   );
   invalidateCache(spreadsheetId);

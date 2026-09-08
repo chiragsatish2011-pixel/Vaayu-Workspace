@@ -2,6 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { Reveal } from "@/components/Reveal";
 import { SettingsForm } from "@/components/SettingsForm";
 import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
+import { CallNotificationsToggle } from "@/components/calls/CallNotificationsToggle";
 import { requireActiveSession } from "@/lib/session";
 
 // Protected, per-user page — always render per request, never prerender
@@ -59,6 +60,21 @@ export default async function SettingsPage() {
           </p>
           <div className="mt-5 border-t border-hairline-soft pt-5">
             <UploadPreferenceToggle />
+          </div>
+        </Reveal>
+
+        <Reveal
+          delay={160}
+          className="mt-6 rounded-2xl border border-hairline bg-canvas p-6 sm:p-8"
+        >
+          <h2 className="font-display text-xl font-bold tracking-tight text-ink">
+            Notifications
+          </h2>
+          <p className="mt-1 text-sm text-steel">
+            Manage call alerts. This controls whether the app sends you notifications — the browser permission itself is managed in your browser’s site settings.
+          </p>
+          <div className="mt-5 border-t border-hairline-soft pt-5">
+            <CallNotificationsToggle userId={user.id} />
           </div>
         </Reveal>
       </section>

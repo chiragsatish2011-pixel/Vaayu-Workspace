@@ -20,7 +20,7 @@ export default async function CallsPage() {
       active="/calls"
     >
       <section className="pt-10 sm:pt-14 pb-16">
-        <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">Calls — Daily.co SFU</p>
+        <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">Calls</p>
         <h1 className="mt-3 max-w-2xl animate-fade-up font-display text-4xl font-bold leading-[1.02] tracking-[-0.02em] sm:text-5xl" style={{ animationDelay: "90ms" }}>
           Calls.
         </h1>
@@ -29,7 +29,7 @@ export default async function CallsPage() {
         </p>
 
         <div className="mt-8">
-          <CallsHub displayName={getDisplayName(user.displayName, user.email)} />
+          <CallsHub displayName={getDisplayName(user.displayName, user.email)} userId={user.id} />
         </div>
       </section>
     </AppShell>

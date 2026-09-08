@@ -1,5 +1,6 @@
 import { withAuth } from "next-auth/middleware";
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * Protect every route except sign-in / sign-up / setup
@@ -43,14 +44,17 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/setup" ||
     pathname.startsWith("/setup/") ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/setup")
+    pathname.startsWith("/api/setup") ||
+    // Tag Along is a public, unauthenticated learning page — must be deployable on Vercel without login
+    pathname === "/tag-along" ||
+    pathname.startsWith("/tag-along/") ||
+    pathname === "/tag-along.html"
   );
 }
 
 export default function middleware(req: NextRequest, ...rest: unknown[]) {
-  if (isPublicPath(req.nextUrl.pathname)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (protectedAuth as any)(req, ...rest);
+  if (isBuildPhase() || isPublicPath(req.nextUrl.pathname)) {
+    return NextResponse.next();
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (protectedAuth as any)(req, ...rest);
@@ -60,7 +64,7 @@ export const config = {
   matcher: [
     /*
      * Match all paths except:
-     * - /signin, /setup (public pages)
+     * - /signin, /setup, /tag-along (public pages)
      * - /api/auth/* (NextAuth handler)
      * - /api/setup/* (first-run wizard APIs)
      * - Next.js internals and static files
@@ -68,6 +72,6 @@ export const config = {
      * NOTE: there is intentionally no public /signup — accounts are created
      * by admins (/admin) or once via the setup wizard (/setup).
      */
-    "/((?!api/auth|api/setup|setup|signin|_next/static|_next/image|favicon.ico|.*\\..*|public).*)",
+    "/((?!api/auth|api/setup|setup|signin|tag-along|_next/static|_next/image|favicon.ico|.*\\..*|public).*)",
   ],
 };

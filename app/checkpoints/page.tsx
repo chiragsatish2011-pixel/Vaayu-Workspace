@@ -31,6 +31,7 @@ export default async function CheckpointsPage() {
     userRole: "admin" | "member";
     displayName: string | null;
     avatarDriveId?: string | null;
+    contentJson?: string | null;
   }> = [];
   let notice: string | null = null;
 
