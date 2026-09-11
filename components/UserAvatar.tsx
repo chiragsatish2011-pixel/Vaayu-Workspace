@@ -84,10 +84,10 @@ export function GroupAvatarCollage({
     const [a, b] = members;
     return (
       <span className={`relative grid place-items-center shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden>
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.62, height: size * 0.62 }}>
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.62, height: size * 0.62 }}>
           <UserAvatar displayName={a!.displayName} email={a!.email} userId={a!.userId} avatarDriveId={a!.avatarDriveId} size={size * 0.62} className="h-full w-full" />
         </span>
-        <span className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.62, height: size * 0.62 }}>
+        <span className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.62, height: size * 0.62 }}>
           <UserAvatar displayName={b!.displayName} email={b!.email} userId={b!.userId} avatarDriveId={b!.avatarDriveId} size={size * 0.62} className="h-full w-full" />
         </span>
       </span>
@@ -97,13 +97,13 @@ export function GroupAvatarCollage({
   if (count === 3) {
     return (
       <span className={`relative grid place-items-center shrink-0 overflow-hidden rounded-full bg-fog ring-1 ring-hairline-soft ${className}`} style={{ width: size, height: size }}>
-        <span className="absolute left-1/2 top-[6%] -translate-x-1/2 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+        <span className="absolute left-1/2 top-[6%] -translate-x-1/2 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
           <UserAvatar displayName={members[0]!.displayName} email={members[0]!.email} userId={members[0]!.userId} avatarDriveId={members[0]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
         </span>
-        <span className="absolute bottom-[6%] left-[6%] rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.48, height: size * 0.48 }}>
+        <span className="absolute bottom-[6%] left-[6%] rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.48, height: size * 0.48 }}>
           <UserAvatar displayName={members[1]!.displayName} email={members[1]!.email} userId={members[1]!.userId} avatarDriveId={members[1]!.avatarDriveId} size={size * 0.48} className="h-full w-full" />
         </span>
-        <span className="absolute bottom-[6%] right-[6%] rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.48, height: size * 0.48 }}>
+        <span className="absolute bottom-[6%] right-[6%] rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.48, height: size * 0.48 }}>
           <UserAvatar displayName={members[2]!.displayName} email={members[2]!.email} userId={members[2]!.userId} avatarDriveId={members[2]!.avatarDriveId} size={size * 0.48} className="h-full w-full" />
         </span>
       </span>
@@ -113,16 +113,16 @@ export function GroupAvatarCollage({
   if (count === 4) {
     return (
       <span className={`relative grid shrink-0 overflow-hidden rounded-full bg-fog ring-1 ring-hairline-soft ${className}`} style={{ width: size, height: size }}>
-        <span className="absolute left-0 top-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+        <span className="absolute left-0 top-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
           <UserAvatar displayName={members[0]!.displayName} email={members[0]!.email} userId={members[0]!.userId} avatarDriveId={members[0]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
         </span>
-        <span className="absolute right-0 top-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+        <span className="absolute right-0 top-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
           <UserAvatar displayName={members[1]!.displayName} email={members[1]!.email} userId={members[1]!.userId} avatarDriveId={members[1]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
         </span>
-        <span className="absolute bottom-0 left-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+        <span className="absolute bottom-0 left-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
           <UserAvatar displayName={members[2]!.displayName} email={members[2]!.email} userId={members[2]!.userId} avatarDriveId={members[2]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
         </span>
-        <span className="absolute bottom-0 right-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+        <span className="absolute bottom-0 right-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
           <UserAvatar displayName={members[3]!.displayName} email={members[3]!.email} userId={members[3]!.userId} avatarDriveId={members[3]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
         </span>
       </span>
@@ -133,16 +133,16 @@ export function GroupAvatarCollage({
   const remaining = count - 3;
   return (
     <span className={`relative grid shrink-0 overflow-hidden rounded-full bg-fog ring-1 ring-hairline-soft ${className}`} style={{ width: size, height: size }}>
-      <span className="absolute left-0 top-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+      <span className="absolute left-0 top-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
         <UserAvatar displayName={visible[0]!.displayName} email={visible[0]!.email} userId={visible[0]!.userId} avatarDriveId={visible[0]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
       </span>
-      <span className="absolute right-0 top-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+      <span className="absolute right-0 top-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
         <UserAvatar displayName={visible[1]!.displayName} email={visible[1]!.email} userId={visible[1]!.userId} avatarDriveId={visible[1]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
       </span>
-      <span className="absolute bottom-0 left-0 rounded-full ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
+      <span className="absolute bottom-0 left-0 rounded-full ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52 }}>
         <UserAvatar displayName={visible[2]!.displayName} email={visible[2]!.email} userId={visible[2]!.userId} avatarDriveId={visible[2]!.avatarDriveId} size={size * 0.52} className="h-full w-full" />
       </span>
-      <span className="absolute bottom-0 right-0 grid place-items-center rounded-full bg-ink text-white ring-2 ring-white shadow-sm" style={{ width: size * 0.52, height: size * 0.52, fontSize: size * 0.22 }}>
+      <span className="absolute bottom-0 right-0 grid place-items-center rounded-full bg-ink text-canvas ring-2 ring-canvas shadow-sm" style={{ width: size * 0.52, height: size * 0.52, fontSize: size * 0.22 }}>
         +{remaining}
       </span>
     </span>

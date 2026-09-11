@@ -961,7 +961,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                       ) : (
                         <span className="relative shrink-0">
                           <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={44} />
-                          {o && onlineUserIds.has(o.userId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" aria-label="Online" />}
+                          {o && onlineUserIds.has(o.userId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-canvas" aria-label="Online" />}
                         </span>
                       )}
                       <span className="min-w-0 flex-1">
@@ -1023,7 +1023,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                   return (
                     <span className="relative shrink-0">
                       <UserAvatar displayName={o?.displayName} email={o?.email} userId={o?.userId} avatarDriveId={o?.avatarDriveId} size={40} />
-                      {isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" aria-label="Online" />}
+                      {isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-canvas" aria-label="Online" />}
                     </span>
                   );
                 })()

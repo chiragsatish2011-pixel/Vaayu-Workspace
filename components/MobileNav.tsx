@@ -141,7 +141,7 @@ export function NavLinks({
               <span className="relative grid place-items-center text-steel transition-colors duration-200 group-hover:text-ink">
                 {item.icon}
                 {showDot && (
-                  <span className="absolute -right-1 -top-1 grid h-2.5 w-2.5 place-items-center rounded-full bg-amber-500 ring-2 ring-white">
+                  <span className="absolute -right-1 -top-1 grid h-2.5 w-2.5 place-items-center rounded-full bg-amber-500 ring-2 ring-canvas">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
                   </span>
                 )}
