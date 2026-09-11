@@ -56,6 +56,17 @@ export default function middleware(req: NextRequest, ...rest: unknown[]) {
   if (isBuildPhase() || isPublicPath(req.nextUrl.pathname)) {
     return NextResponse.next();
   }
+  // Vercel Cron (nightly chat archive) carries no user session — let its
+  // credentialed GET through to the route, which re-verifies CRON_SECRET
+  // itself. Anything without cron credentials still hits auth below.
+  if (
+    req.nextUrl.pathname === "/api/chat/archive" &&
+    req.method === "GET" &&
+    (req.headers.get("x-vercel-cron") === "1" ||
+      (req.headers.get("authorization") || "").startsWith("Bearer "))
+  ) {
+    return NextResponse.next();
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (protectedAuth as any)(req, ...rest);
 }

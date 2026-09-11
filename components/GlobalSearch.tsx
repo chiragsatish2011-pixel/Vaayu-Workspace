@@ -145,7 +145,7 @@ export function GlobalSearch() {
   };
 
   return (
-    <div className="relative hidden min-w-0 flex-1 max-w-xs sm:block">
+    <div className="relative min-w-0 flex-1">
       <div className="flex min-w-0 items-center gap-2 rounded-lg border border-hairline bg-fog px-3 text-steel focus-within:border-ink">
         <SearchIcon className="h-4 w-4 shrink-0" />
         <input

@@ -755,28 +755,28 @@ export function ProjectsManager({
       </div>
 
       {/* ── Reconciliation Banner: Drive vs DB (state-sync fix) ── */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={refreshOrphans}
           disabled={orphansLoading}
-          className="inline-flex items-center gap-2 rounded-full border border-hairline bg-canvas px-4 py-1.5 text-xs font-semibold text-steel hover:border-ink hover:text-ink disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-2 rounded-full border border-hairline bg-canvas px-4 py-1.5 text-xs font-semibold text-steel hover:border-ink hover:text-ink disabled:opacity-50"
         >
           {orphansLoading ? "Syncing…" : "Sync with Drive"}
         </button>
         {orphans.length > 0 && (
-          <span className="font-mono text-[11px] text-amber-700">
+          <span className="min-w-0 flex-1 basis-full break-words font-mono text-[11px] text-amber-700 sm:basis-auto">
             {orphans.length} orphaned {orphans.length === 1 ? "item" : "items"} in Drive — {showOrphans ? "review below" : "not in projects"}
           </span>
         )}
         {orphansError && (
-          <span className="font-mono text-[11px] text-error">{orphansError}</span>
+          <span className="min-w-0 flex-1 basis-full break-words font-mono text-[11px] text-error sm:basis-auto">{orphansError}</span>
         )}
         {orphans.length > 0 && (
           <button
             type="button"
             onClick={() => setShowOrphans((v) => !v)}
-            className="ml-auto text-xs font-semibold text-ink underline"
+            className="ml-auto shrink-0 text-xs font-semibold text-ink underline"
           >
             {showOrphans ? "Hide" : `Review (${orphans.length})`}
           </button>

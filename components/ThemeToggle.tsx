@@ -33,6 +33,37 @@ export function getStoredTheme(): ThemeChoice {
   return "system";
 }
 
+export const DEFAULT_ACCENT = "#0a0a0a";
+const ACCENT_STORAGE_KEY = "vaayu:workspace:accent";
+
+/**
+ * Apply the workspace accent (Settings → Personalize). The accent tints
+ * PRIMARY BUTTONS ONLY via `--workspace-accent` (see globals.css).
+ *
+ * It must NEVER write `--color-ink`: that variable is the body/text color,
+ * and older builds hijacked it here — with the default black accent that
+ * painted every heading black in dark mode (invisible on the dark canvas).
+ * This also migrates those browsers by removing any stale inline value so
+ * the stylesheet's per-mode text color applies again.
+ */
+export function applyWorkspaceAccent(color: string): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.style.setProperty("--workspace-accent", color);
+  if (color === DEFAULT_ACCENT) root.removeAttribute("data-accent");
+  else root.setAttribute("data-accent", "custom");
+  root.style.removeProperty("--color-ink");
+}
+
+export function getStoredAccent(): string {
+  if (typeof window === "undefined") return DEFAULT_ACCENT;
+  try {
+    return window.localStorage.getItem(ACCENT_STORAGE_KEY) || DEFAULT_ACCENT;
+  } catch {
+    return DEFAULT_ACCENT;
+  }
+}
+
 /** Shared hook — header toggle + Settings appearance selector stay in sync. */
 export function useTheme() {
   const [choice, setChoiceState] = useState<ThemeChoice>(() => getStoredTheme());

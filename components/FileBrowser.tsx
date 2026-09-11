@@ -1198,8 +1198,8 @@ export function FileBrowser({
                 </div>
               ) : (
                 <div className="flex flex-col">
-                  <div className="sticky top-0 z-[1] grid grid-cols-[32px_1fr_120px_140px_80px] gap-2 border-b border-[#e8eaed] bg-white px-4 py-2 text-xs font-medium text-[#5f6368]">
-                    <span></span><span>Name</span><span>Owner</span><span>Last modified</span><span className="text-right">Size</span>
+                  <div className="sticky top-0 z-[1] grid grid-cols-[32px_1fr_72px] gap-2 border-b border-[#e8eaed] bg-white px-4 py-2 text-xs font-medium text-[#5f6368] sm:grid-cols-[32px_1fr_120px_140px_80px]">
+                    <span></span><span>Name</span><span className="hidden sm:block">Owner</span><span className="hidden sm:block">Last modified</span><span className="text-right">Size</span>
                   </div>
                   <div className="divide-y divide-[#f1f3f4]">
                     {[...gridNav.folders, ...gridNav.files].slice(0,gridLimit).map((node)=> {
@@ -1211,7 +1211,7 @@ export function FileBrowser({
                           onClick={()=> isFolder ? setGridPath([...gridNav.valid, node.name]) : setPreview(node)}
                           onDoubleClick={()=> isFolder ? setGridPath([...gridNav.valid, node.name]) : setPreview(node)}
                           onContextMenu={(e)=>{e.preventDefault(); if(!isFolder) setDetailsNode(node);}}
-                          className={`grid cursor-pointer grid-cols-[32px_1fr_120px_140px_80px] items-center gap-2 px-4 py-2 hover:bg-[#f8f9fa] ${isSelected?"bg-[#e8f0fe]":""}`}
+                          className={`grid cursor-pointer grid-cols-[32px_1fr_72px] items-center gap-2 px-4 py-2 hover:bg-[#f8f9fa] sm:grid-cols-[32px_1fr_120px_140px_80px] ${isSelected?"bg-[#e8f0fe]":""}`}
                         >
                           <label onClick={(e)=>e.stopPropagation()} className="grid place-items-center">
                             <input type="checkbox" checked={isFolder?false:isSelected} onChange={()=>!isFolder && toggleSelect(node.id)} className={`h-4 w-4 rounded border-[#5f6368] accent-[#1a73e8] ${isFolder?"opacity-0 pointer-events-none":""}`} />
@@ -1220,8 +1220,8 @@ export function FileBrowser({
                             <span className={`grid h-8 w-8 place-items-center rounded ${isFolder?"bg-[#f1f3f4] text-[#5f6368]":"bg-white border border-[#e8eaed]"}`}>{isFolder?<FolderIcon className="h-4 w-4" />:<span className="text-xs">{fileIconFor(node.mimeType, node.name)}</span>}</span>
                             <span className="truncate text-sm text-[#1f1f1f]">{node.name}</span>
                           </span>
-                          <span className="truncate text-xs text-[#5f6368]">me</span>
-                          <span className="text-xs text-[#5f6368]">{node.file?.modifiedTime ? new Date(node.file.modifiedTime).toLocaleDateString() : "—"}</span>
+                          <span className="hidden truncate text-xs text-[#5f6368] sm:block">me</span>
+                          <span className="hidden text-xs text-[#5f6368] sm:block">{node.file?.modifiedTime ? new Date(node.file.modifiedTime).toLocaleDateString() : "—"}</span>
                           <span className="text-right font-mono text-xs text-[#5f6368]">{isFolder?`${(node as any).totalDescendantFiles??"—"} items`:formatBytes(Number(node.size||0)||0)}</span>
                         </div>
                       );
@@ -2165,8 +2165,10 @@ function FileRow({
         )}
       </div>
 
-      {/* Download + trash actions */}
-      <div className="flex shrink-0 items-center gap-1.5">
+      {/* Download + trash actions — wraps to two lines on narrow screens
+          so the filename never gets crushed sideways (all actions stay
+          reachable on mobile; grid cards keep the ⋮ menu as well) */}
+      <div className="flex max-w-[46%] shrink-0 flex-wrap items-center justify-end gap-1.5 sm:max-w-none">
       {isFolder ? (
         <button
           onClick={() => onDownloadFolder(node)}

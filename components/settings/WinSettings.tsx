@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
-import { useTheme, type ThemeChoice } from "@/components/ThemeToggle";
+import { useTheme, applyWorkspaceAccent, type ThemeChoice } from "@/components/ThemeToggle";
 import {
   BellIcon,
   InfoIcon,
@@ -213,22 +213,13 @@ function PersonalizeSwatches() {
   useEffect(() => {
     try {
       window.localStorage.setItem("vaayu:workspace:accent", selected);
-      document.documentElement.style.setProperty("--workspace-accent", selected);
-      // Also tint the ink variable for primary buttons in this workspace
-      if (selected !== "#0a0a0a") {
-        document.documentElement.style.setProperty("--color-ink", selected);
-      } else {
-        document.documentElement.style.setProperty("--color-ink", "#0a0a0a");
-      }
+      applyWorkspaceAccent(selected);
     } catch {}
   }, [selected]);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("vaayu:workspace:accent");
-      if (saved) {
-        document.documentElement.style.setProperty("--workspace-accent", saved);
-        if (saved !== "#0a0a0a") document.documentElement.style.setProperty("--color-ink", saved);
-      }
+      applyWorkspaceAccent(saved || "#0a0a0a");
     } catch {}
   }, []);
   return (
@@ -247,7 +238,7 @@ function PersonalizeSwatches() {
           >
             {isActive && (
               <span className="absolute inset-0 grid place-items-center">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-ink shadow">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-black shadow">
                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M5 13l4 4L19 7" />
                   </svg>
@@ -586,17 +577,17 @@ function AboutPanel({ user }: { user: WinUser }) {
         <p className="font-semibold">Vaayu Workspace</p>
         <p className="mt-1 font-mono text-xs text-steel">Phase 01 · Vercel + Neon · Drive backend</p>
         <div className="mt-4 grid gap-3 text-sm">
-          <div className="flex justify-between border-b border-hairline-soft py-2">
-            <span className="text-steel">Signed in as</span>
-            <span className="font-mono text-ink">{user.email}</span>
+          <div className="flex justify-between gap-3 border-b border-hairline-soft py-2">
+            <span className="shrink-0 text-steel">Signed in as</span>
+            <span className="min-w-0 truncate text-right font-mono text-ink" title={user.email}>{user.email}</span>
           </div>
-          <div className="flex justify-between border-b border-hairline-soft py-2">
-            <span className="text-steel">Role</span>
-            <span className="font-semibold capitalize">{user.role}</span>
+          <div className="flex justify-between gap-3 border-b border-hairline-soft py-2">
+            <span className="shrink-0 text-steel">Role</span>
+            <span className="min-w-0 truncate text-right font-semibold capitalize">{user.role}</span>
           </div>
-          <div className="flex justify-between py-2">
-            <span className="text-steel">Workspace</span>
-            <span className="font-mono text-xs">vaayu-workspace</span>
+          <div className="flex justify-between gap-3 py-2">
+            <span className="shrink-0 text-steel">Workspace</span>
+            <span className="min-w-0 truncate text-right font-mono text-xs">vaayu-workspace</span>
           </div>
         </div>
       </div>

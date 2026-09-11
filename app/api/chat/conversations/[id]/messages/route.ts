@@ -1,11 +1,13 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { db } from "@/db";
 import { chatMessages, conversations, users } from "@/db/schema";
 import { requireApiSession } from "@/lib/session";
 import { isParticipant } from "@/lib/chat-access";
 import { publishToConversation } from "@/lib/chat-bus";
 import { getArchivedMessages } from "@/lib/chat-archive-store";
+import { runChatArchiveJob } from "@/lib/chat-archive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -204,6 +206,20 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     // Real-time push (replaces the old 2.5s polling).
     publishToConversation(conversationId, { type: "message.created", data: { message } });
+
+    // Opportunistic sweep AFTER the response: any message now older than
+    // 24h is moved to Sheets and deleted from Neon, so active chats
+    // self-clean within seconds instead of waiting for the nightly cron.
+    // Non-blocking (runs after the response) and failure-safe.
+    try {
+      after(() => {
+        runChatArchiveJob({ batchSize: 500, maxBatches: 2 }).catch((err) =>
+          console.error("[chat/archive background]", err)
+        );
+      });
+    } catch {
+      // after() unavailable here — the nightly cron still covers archival.
+    }
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {

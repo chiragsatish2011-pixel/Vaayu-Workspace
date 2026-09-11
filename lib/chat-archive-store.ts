@@ -11,6 +11,9 @@ interface CachedRow {
 
 const CACHE_TTL_MS = 15_000;
 let cache: { spreadsheetId: string; at: number; rows: CachedRow[] } | null = null;
+// Short-lived "tab exists + header correct" flag (see ensureChatArchiveSheet).
+const ENSURE_TTL_MS = 5 * 60 * 1000;
+let ensured: { spreadsheetId: string; at: number } | null = null;
 
 function invalidateCache(spreadsheetId: string): void {
   if (cache?.spreadsheetId === spreadsheetId) cache = null;
@@ -18,6 +21,14 @@ function invalidateCache(spreadsheetId: string): void {
 
 export async function ensureChatArchiveSheet(): Promise<void> {
   const spreadsheetId = requireCheckpointsSpreadsheetId();
+  // The tab+header only need creating once — cache the "ensured" state
+  // briefly so background triggers (every message POST) don't pay 1–2
+  // Sheets API calls per request. Failures throw before this is set, so a
+  // cached entry always means a verified tab+header.
+  const now = Date.now();
+  if (ensured && ensured.spreadsheetId === spreadsheetId && now - ensured.at < ENSURE_TTL_MS) {
+    return;
+  }
   const token = await getSheetsAccessToken();
   const meta = await sheetsGetMetadata(token, spreadsheetId);
   if (!meta.tabTitles.includes(CHAT_ARCHIVE_TAB)) {
@@ -32,6 +43,7 @@ export async function ensureChatArchiveSheet(): Promise<void> {
       invalidateCache(spreadsheetId);
     }
   }
+  ensured = { spreadsheetId, at: Date.now() };
 }
 
 async function readSheet(): Promise<{ spreadsheetId: string; rows: CachedRow[] }> {
@@ -89,4 +101,11 @@ export async function archiveMessages(records: ChatArchiveRecord[]): Promise<voi
 export async function getAllArchivedCount(): Promise<number> {
   const { rows } = await readSheet();
   return rows.length;
+}
+
+/** Id set of every message already in Sheets — lets the archive job skip
+ * re-appending (and still delete the Neon copy to free storage). */
+export async function getArchivedIdSet(): Promise<Set<string>> {
+  const { rows } = await readSheet();
+  return new Set(rows.map((r) => r.record.id));
 }

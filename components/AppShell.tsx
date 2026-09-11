@@ -1,6 +1,7 @@
 import { Badge } from "@/components/Badge";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { MobileNav, NavLinks } from "@/components/MobileNav";
+import { MobileSearch } from "@/components/MobileSearch";
 import { OnboardingFlow } from "@/components/OnboardingFlow";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -88,6 +89,7 @@ export function AppShell({
               <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2 sm:ml-0">
+              <MobileSearch />
               <ThemeToggle compact />
               <Badge tone="live">
                 <span className="h-1.5 w-1.5 rounded-full bg-success-text" />

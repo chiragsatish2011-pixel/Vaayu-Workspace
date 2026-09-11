@@ -1151,22 +1151,22 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                           <div className={`group flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
                             <UserAvatar displayName={m.displayName} email={m.userEmail} userId={m.userId} avatarDriveId={m.avatarDriveId} size={32} />
                             <div className={`flex max-w-[75%] flex-col ${isOwn ? "items-end" : "items-start"}`}>
-                              <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
-                                <span className="text-sm font-semibold text-ink">{getDisplayName(m.displayName, m.userEmail)}</span>
-                                <span className="font-mono text-[11px] text-stone">{formatDateTime(m.createdAt)}</span>
+                              <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+                                <span className="min-w-0 max-w-full truncate text-sm font-semibold text-ink">{getDisplayName(m.displayName, m.userEmail)}</span>
+                                <span className="shrink-0 font-mono text-[11px] text-stone">{formatDateTime(m.createdAt)}</span>
                                 {isOwn && !meta.deleted && (
-                                  <span title={read ? "Read" : "Sent"} className={`font-mono text-[11px] ${read ? "text-violet" : "text-stone"}`}>
+                                  <span title={read ? "Read" : "Sent"} className={`shrink-0 font-mono text-[11px] ${read ? "text-violet" : "text-stone"}`}>
                                     {read ? "✓✓" : "✓"}
                                   </span>
                                 )}
-                                {isEdited(m) && !meta.deleted && <span className="font-mono text-[10px] text-stone">(edited)</span>}
+                                {isEdited(m) && !meta.deleted && <span className="shrink-0 font-mono text-[10px] text-stone">(edited)</span>}
                               </div>
                               {meta.deleted ? (
                                 <div className="mt-1 rounded-2xl border border-dashed border-hairline px-3.5 py-2.5 text-sm italic text-stone">
                                   🚫 This message was deleted
                                 </div>
                               ) : isEditing ? (
-                                <div className="mt-1 w-full min-w-[240px]">
+                                <div className="mt-1 w-full min-w-0 max-w-full sm:min-w-[240px]">
                                   <TiptapEditor
                                     key={`edit-${m.id}-${editKey}`}
                                     placeholder="Edit message…"
@@ -1331,7 +1331,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                     </div>
                   )}
                   <div className="flex items-end gap-2">
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <TiptapEditor
                         key={`${selectedId}-${editorKey}`}
                         placeholder={`Message ${selected.type === "group" ? (selected.name || "group") : convoTitle(selected, selfId)}… @ to mention (Enter to send)`}
@@ -1347,7 +1347,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                     <button
                       type="submit"
                       disabled={sending || !draft?.text?.trim()}
-                      className="h-11 shrink-0 rounded-full bg-ink px-6 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50"
+                      className="h-11 shrink-0 rounded-full bg-ink px-4 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50 sm:px-6"
                     >
                       {sending ? "…" : "Send"}
                     </button>
@@ -1355,9 +1355,16 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                 </form>
               </div>
 
-              {/* Group info panel */}
+              {/* Group info panel — drawer on mobile, side pane on desktop */}
               {groupInfoOpen && selected.type === "group" && (
-                <GroupInfoPanel
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close group info"
+                    onClick={() => setGroupInfoOpen(false)}
+                    className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] lg:hidden"
+                  />
+                  <GroupInfoPanel
                   convo={selected}
                   selfId={selfId}
                   onChanged={() => {
@@ -1370,7 +1377,8 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                     void fetchConvos();
                   }}
                   onClose={() => setGroupInfoOpen(false)}
-                />
+                  />
+                </>
               )}
             </div>
           </>
@@ -1518,7 +1526,7 @@ function GroupInfoPanel({
   };
 
   return (
-    <aside className="hidden w-[280px] shrink-0 flex-col border-l border-hairline-soft bg-canvas lg:flex">
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(320px,85vw)] shrink-0 flex-col border-l border-hairline-soft bg-canvas shadow-2xl lg:static lg:w-[280px] lg:shadow-none">
       <div className="flex items-center justify-between border-b border-hairline-soft px-4 py-3">
         <h3 className="font-display text-sm font-bold text-ink">Group info</h3>
         <button onClick={onClose} aria-label="Close group info" className="grid h-8 w-8 place-items-center rounded-full border border-hairline text-sm hover:border-ink">✕</button>

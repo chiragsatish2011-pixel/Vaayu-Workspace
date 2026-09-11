@@ -115,14 +115,14 @@ function CallHistory({ currentUserId, currentUserRole }: { currentUserId: string
 
   return (
     <div className="rounded-2xl border border-hairline bg-canvas p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Call history</p>
           <p className="mt-1 text-xs text-steel">
             {calls.length === 0 ? "No calls yet — history will appear here." : `${calls.length} total · ${deletableCount} deletable by you`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <>
               <span className="font-mono text-xs text-ink">{selected.size} selected</span>
@@ -277,12 +277,12 @@ function ScheduledMeetingsHub({ currentUserId, currentUserRole, onJoinCall }: { 
 
   return (
     <div className="rounded-2xl border border-hairline bg-canvas p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">Scheduled meetings</p>
           <p className="mt-1 text-xs text-steel">Teams-style — one-time or recurring (daily/weekly/custom), 10 min reminder, 10 min early join</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-full border border-hairline-soft bg-fog/60 p-0.5">
             <button onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-xs font-semibold ${view === "list" ? "bg-canvas shadow text-ink" : "text-steel"}`}>
               List

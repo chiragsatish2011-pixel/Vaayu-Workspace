@@ -180,7 +180,7 @@ export function TiptapEditor({ placeholder = "Type a message… @ to mention", i
                   interactive: true,
                   trigger: "manual",
                   placement: "bottom-start",
-                  maxWidth: "320px",
+                  maxWidth: "min(320px, calc(100vw - 32px))",
                   theme: "vaayu-dark",
                   arrow: false,
                   offset: [0, 8],

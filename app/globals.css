@@ -144,6 +144,23 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ── Workspace accent (Settings → Appearance → Personalize) ─────────
+ * The accent tints PRIMARY BUTTONS ONLY, via `--workspace-accent`.
+ * It must NEVER override `--color-ink`: that variable is the body/text
+ * color, and hijacking it paints all text in the accent color — with the
+ * default black accent that means invisible black text in dark mode.
+ */
+:root {
+  --workspace-accent: #0a0a0a;
+}
+
+/* Every `bg-ink` primary surface follows the accent (same coverage the
+ * old --color-ink hijack gave buttons, without touching text). Unlayered,
+ * so it wins over the Tailwind utility. */
+.bg-ink {
+  background-color: var(--workspace-accent, var(--color-ink));
+}
+
 /* ── Dark mode (class-based, persisted on <html>) ─────────────────────
  * Semantic tokens above stay the source of truth for light mode.
  * Flipping the same variables under `.dark` re-skins every
@@ -181,11 +198,21 @@ html {
   color: #09090b;
 }
 
-/* Primary `bg-ink text-white` buttons become light-on-dark automatically
- * once --color-ink flips; the white text would vanish on the now-light
- * button, so re-point it at the (now dark) canvas. Prefer `text-canvas`
- * for new primary buttons — this rule keeps existing ones correct. */
-.dark .bg-ink.text-white {
+/* In dark mode the DEFAULT (black) accent would be an invisible button,
+ * so it flips to light — but ONLY when no custom accent is set
+ * (`data-accent="custom"` on <html>). Custom accents keep their color
+ * with white text in both modes. */
+.dark:not([data-accent="custom"]) {
+  --workspace-accent: #f4f4f5;
+}
+
+/* Primary `bg-ink text-white` buttons: white text vanishes on the now-light
+ * default-accent button in dark mode, so re-point it at the (dark) canvas.
+ * Scoped to default-accent only — custom accents keep white text.
+ * Covers both same-element (`bg-ink text-white`) and nested label spans
+ * (e.g. avatar-initial tiles). Prefer `text-canvas` for new buttons. */
+.dark:not([data-accent="custom"]) .bg-ink.text-white,
+.dark:not([data-accent="custom"]) .bg-ink .text-white {
   color: #09090b;
 }
 

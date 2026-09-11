@@ -25,7 +25,7 @@ export function SectionMatrix() {
                 {s.badge.text}
               </Badge>
             </div>
-            <h3 className="relative z-[2] mt-auto pt-10 font-display text-[44px] font-bold leading-[1.02] tracking-[-0.03em]">
+            <h3 className="relative z-[2] mt-auto pt-10 font-display text-3xl font-bold leading-[1.02] tracking-[-0.03em] sm:text-[44px]">
               {s.wordmark}
             </h3>
             <p className="relative z-[2] mt-2 text-[15px] font-medium text-white/85">

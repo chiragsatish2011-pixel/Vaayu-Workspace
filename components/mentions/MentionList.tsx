@@ -54,7 +54,7 @@ export function MentionList({
 
   if (items.length === 0) {
     return (
-      <div className="w-[320px] rounded-xl border border-white/10 bg-[#1e1e1e] p-3 text-xs text-zinc-400 shadow-[0_12px_32px_rgba(0,0,0,0.4)]">No results. Try a different query.</div>
+      <div className="w-[min(320px,calc(100vw-32px))] rounded-xl border border-white/10 bg-[#1e1e1e] p-3 text-xs text-zinc-400 shadow-[0_12px_32px_rgba(0,0,0,0.4)]">No results. Try a different query.</div>
     );
   }
 
@@ -62,7 +62,7 @@ export function MentionList({
   const isChannelPopup = items.length <= 2 && items.every((i) => i.label === "explore" || i.label === "general");
   if (isChannelPopup) {
     return (
-      <div className="w-[320px] overflow-hidden rounded-xl border border-white/10 bg-[#1e1e1e] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+      <div className="w-[min(320px,calc(100vw-32px))] overflow-hidden rounded-xl border border-white/10 bg-[#1e1e1e] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
         {items.map((item, idx) => {
           const isSelected = idx === selected;
           const isExplore = item.label === "explore";
@@ -98,7 +98,7 @@ export function MentionList({
   let globalIndex = -1;
 
   return (
-    <div className="max-h-80 w-80 overflow-y-auto rounded-xl border border-white/10 bg-[#1e1e1e] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+    <div className="max-h-80 w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-xl border border-white/10 bg-[#1e1e1e] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
       {grouped.map((group) => (
         <div key={group.type} className="mb-2 last:mb-0">
           <div className="flex items-center gap-1.5 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-500">

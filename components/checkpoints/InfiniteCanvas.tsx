@@ -478,19 +478,19 @@ export function InfiniteCanvas({
       />
 
       {/* ── Top Navigation Header ── */}
-      <header className="absolute top-0 left-0 right-0 z-30 h-16 bg-white/90 backdrop-blur-md border-b border-[#e4e4e7] px-5 flex items-center justify-between" data-ui>
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-zinc-900 flex items-center justify-center text-white font-semibold text-xs tracking-wider shadow-sm">V</div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
+      <header className="absolute top-0 left-0 right-0 z-30 h-16 bg-white/90 backdrop-blur-md border-b border-[#e4e4e7] px-4 sm:px-5 flex items-center justify-between gap-2" data-ui>
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 shrink-0 rounded-lg bg-zinc-900 flex items-center justify-center text-white font-semibold text-xs tracking-wider shadow-sm">V</div>
+            <div className="flex flex-col min-w-0">
+              <div className="hidden min-[420px]:flex items-center gap-1 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
                 <span>TEAM TIMELINE</span>
                 <span>/</span>
                 <span className="text-zinc-600">Canvas Mode</span>
               </div>
-              <h1 className="text-sm font-semibold tracking-tight text-zinc-900 flex items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-zinc-900 flex items-center gap-2">
                 Vaayu Core Workspace
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" /> live
                 </span>
               </h1>
@@ -552,7 +552,7 @@ export function InfiniteCanvas({
           </button>
           <button
             onClick={focusDraft}
-            className="inline-flex items-center px-3.5 py-1.5 text-xs font-medium text-white bg-[#52525b] hover:bg-[#3f3f46] rounded-lg shadow-sm transition"
+            className="inline-flex shrink-0 items-center px-2.5 sm:px-3.5 py-1.5 text-xs font-medium text-white bg-[#52525b] hover:bg-[#3f3f46] rounded-lg shadow-sm transition"
             title="Pan to the note composer"
           >
             <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -658,7 +658,7 @@ export function InfiniteCanvas({
                   data-node
                   onPointerDown={(e) => handleNodePointerDown(e, node)}
                   onClick={() => setSelectedId(node.id)}
-                  className={`absolute canvas-node group select-text ${colors.bg} border rounded-xl p-4 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_30px_-10px_rgba(0,0,0,0.08),0_10px_15px_-5px_rgba(0,0,0,0.04)] ${draggingId === node.id ? "cursor-grabbing z-20" : "cursor-pointer"} ${isCentral ? "border-2 rounded-2xl p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05)] ring-4 ring-amber-100/60 w-[330px]" : "w-[270px]"} ${isSelected ? "ring-2 ring-zinc-900/10 z-10" : ""}`}
+                  className={`absolute canvas-node group select-text ${colors.bg} border rounded-xl p-4 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_30px_-10px_rgba(0,0,0,0.08),0_10px_15px_-5px_rgba(0,0,0,0.04)] ${draggingId === node.id ? "cursor-grabbing z-20" : "cursor-pointer"} ${isCentral ? "border-2 rounded-2xl p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05)] ring-4 ring-amber-100/60 w-[280px] sm:w-[330px]" : "w-[240px] sm:w-[270px]"} ${isSelected ? "ring-2 ring-zinc-900/10 z-10" : ""}`}
                   style={{ left: node.canvasX, top: node.canvasY, transition: draggingId === node.id ? "none" : undefined }}
                 >
                   <div className={`washi-tape absolute -top-2.5 left-1/2 -translate-x-1/2 h-4 rounded-sm border border-zinc-200/50 backdrop-blur-[2px] ${isCentral ? "w-24 h-5 -top-3 border-amber-200/80" : "w-16"} rotate-1`} style={{ background: "rgba(255,255,255,0.7)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }} />
@@ -845,7 +845,7 @@ export function InfiniteCanvas({
             {/* Draft Node — always at far right like HTML */}
             <article
               id="draft-node"
-              className="absolute w-[340px] bg-white border-2 border-dashed border-zinc-300 rounded-2xl p-5 shadow-sm hover:border-zinc-400 transition"
+              className="absolute w-[min(340px,calc(100vw-48px))] bg-white border-2 border-dashed border-zinc-300 rounded-2xl p-5 shadow-sm hover:border-zinc-400 transition"
               style={{ left: 1110, top: 300 }}
               data-ui
             >

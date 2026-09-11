@@ -39,11 +39,13 @@ export default function RootLayout({
     >
       <head>
         {/* Theme init — runs before first paint so dark mode never flashes
-            light. Mirrors components/ThemeToggle.tsx (storage key +
-            system fallback must stay in sync). */}
+            light. Mirrors components/ThemeToggle.tsx (storage keys +
+            system fallback must stay in sync). Also applies the workspace
+            accent early and clears any stale inline --color-ink left by
+            older builds (accent must never own the text color). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('vaayu:theme');var d=t==='dark'||((!t||t==='system')&&matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark')}document.documentElement.style.colorScheme=d?'dark':'light'}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('vaayu:theme');var d=t==='dark'||((!t||t==='system')&&matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark')}document.documentElement.style.colorScheme=d?'dark':'light'}catch(e){}try{var a=localStorage.getItem('vaayu:workspace:accent');document.documentElement.style.removeProperty('--color-ink');if(a&&a!=='#0a0a0a'){document.documentElement.setAttribute('data-accent','custom');document.documentElement.style.setProperty('--workspace-accent',a)}}catch(e){}})();`,
           }}
         />
       </head>

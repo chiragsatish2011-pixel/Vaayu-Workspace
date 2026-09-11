@@ -73,7 +73,7 @@ export function VoicePlayer({
   const pct = dur > 0 ? Math.min(100, (t / dur) * 100) : 0;
 
   return (
-    <span className="my-1 flex w-full min-w-[220px] max-w-[320px] items-center gap-2.5 rounded-xl border border-hairline bg-white px-3 py-2 text-ink">
+    <span className="my-1 flex w-full min-w-0 max-w-full items-center gap-2.5 rounded-xl border border-hairline bg-white px-3 py-2 text-ink sm:min-w-[220px] sm:max-w-[320px]">
       <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
       <button
         type="button"
