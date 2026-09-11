@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { ConsoleMock } from "@/components/ConsoleMock";
 import { Wordmark } from "@/components/Wordmark";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 /**
  * Split-screen auth layout — white form canvas + deep-pine brand panel
@@ -31,6 +32,9 @@ export function AuthLayout({
       <div className="grid flex-1 lg:grid-cols-[1fr_1.05fr]">
         {/* Form side */}
         <div className="relative flex items-center justify-center overflow-hidden px-4 py-12 sm:px-8">
+          <div className="absolute top-4 right-4 z-20">
+            <ThemeToggle />
+          </div>
           <div
             aria-hidden
             className="dot-grid pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(70%_60%_at_50%_40%,#000,transparent)]"
