@@ -963,25 +963,25 @@ export function FileBrowser({
   if (loading) {
     if (isDrive) {
       return (
-        <div className="flex flex-1 flex-col bg-canvas">
+        <div className="flex flex-1 flex-col bg-[#f8f9fa]">
           <div className="flex flex-1">
-            <aside className="hidden w-[256px] shrink-0 border-r border-hairline bg-fog p-3 md:flex flex-col">
-              <div className="h-14 animate-pulse rounded-2xl bg-canvas shadow-sm" />
+            <aside className="hidden w-[256px] shrink-0 border-r border-[#e8eaed] bg-[#f8f9fa] p-3 md:flex flex-col">
+              <div className="h-14 animate-pulse rounded-2xl bg-white shadow-sm" />
               <div className="mt-4 space-y-2">
-                <div className="h-9 rounded-full bg-azure-soft" />
-                <div className="h-8 rounded-lg bg-canvas" />
-                <div className="h-8 rounded-lg bg-canvas" />
-                <div className="h-8 rounded-lg bg-canvas" />
+                <div className="h-9 rounded-full bg-[#e8f0fe]" />
+                <div className="h-8 rounded-lg bg-white" />
+                <div className="h-8 rounded-lg bg-white" />
+                <div className="h-8 rounded-lg bg-white" />
               </div>
             </aside>
-            <div className="flex flex-1 flex-col bg-canvas md:rounded-tl-2xl md:shadow-sm">
-              <div className="h-[64px] animate-pulse border-b border-hairline bg-canvas" />
+            <div className="flex flex-1 flex-col bg-white md:rounded-tl-2xl md:shadow-sm">
+              <div className="h-[64px] animate-pulse border-b border-[#e8eaed] bg-white" />
               <div className="flex-1 animate-pulse p-6">
                 <div className="grid grid-cols-4 gap-4">
-                  <div className="h-32 rounded-xl bg-fog" />
-                  <div className="h-32 rounded-xl bg-fog" />
-                  <div className="h-32 rounded-xl bg-fog" />
-                  <div className="h-32 rounded-xl bg-fog" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
+                  <div className="h-32 rounded-xl bg-[#f8f9fa]" />
                 </div>
               </div>
             </div>
@@ -1002,12 +1002,12 @@ export function FileBrowser({
   if (error || !data || !tree) {
     if (isDrive) {
       return (
-        <div className="flex flex-1 flex-col bg-canvas">
+        <div className="flex flex-1 flex-col bg-[#f8f9fa]">
           <div className="flex flex-1">
-            <aside className="hidden w-[256px] shrink-0 bg-fog p-3 md:block" />
-            <div className="flex flex-1 flex-col items-center justify-center bg-canvas md:rounded-tl-2xl p-12 text-center">
+            <aside className="hidden w-[256px] shrink-0 bg-[#f8f9fa] p-3 md:block" />
+            <div className="flex flex-1 flex-col items-center justify-center bg-white md:rounded-tl-2xl p-12 text-center">
               <p className="text-sm text-error">{error || "Could not load files."}</p>
-              <button onClick={() => void load()} className="mt-3 rounded-full bg-ink px-5 py-2 text-sm font-semibold text-canvas">
+              <button onClick={() => void load()} className="mt-3 rounded-full bg-[#0a0a0a] px-5 py-2 text-sm font-semibold text-white">
                 Retry
               </button>
             </div>
@@ -1030,80 +1030,80 @@ export function FileBrowser({
   // ── Drive variant — full-page, elite, Google Drive-identical shell ──
   if (isDrive && gridNav) {
     return (
-      <div className="flex min-h-[calc(100vh-57px)] flex-1 flex-col bg-canvas text-ink">
+      <div className="flex min-h-[calc(100vh-57px)] flex-1 flex-col bg-[#f8f9fa] text-ink">
         {/* Hidden inputs */}
         <input ref={fileInputRef} type="file" multiple onChange={handleDriveFilesChange} className="hidden" aria-label="Upload files" />
         <input ref={folderInputRef} type="file" onChange={handleDriveFolderChange} className="hidden" aria-label="Upload folder" />
         {/* Drive top: New + search + meta */}
-        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-hairline-soft bg-canvas px-3 py-3 md:px-4">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-[#e8eaed] bg-[#f8f9fa] px-3 py-3 md:px-4">
           <div className="relative">
-            <button type="button" onClick={() => setNewMenuOpen((v) => !v)} disabled={mutating || uploading} className="inline-flex items-center gap-2 rounded-2xl bg-canvas border border-hairline text-ink px-5 py-3 text-sm font-medium shadow-xs hover:border-steel disabled:opacity-50">
+            <button type="button" onClick={() => setNewMenuOpen((v) => !v)} disabled={mutating || uploading} className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-medium shadow-[0_1px_2px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.12)] disabled:opacity-50">
               <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-[#34a853] via-[#4285f4] to-[#ea4335] text-[10px] font-bold text-white">+</span> New
             </button>
             {newMenuOpen && (
               <>
                 <button type="button" aria-hidden tabIndex={-1} onClick={() => setNewMenuOpen(false)} className="fixed inset-0 z-10 cursor-default bg-transparent" />
-                <div role="menu" className="absolute left-0 top-[48px] z-20 w-64 overflow-hidden rounded-xl border border-hairline bg-canvas py-2 shadow-xl">
-                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); setNewFolderParent({ id: gridNav.node.id.startsWith("folder-") ? data.root.id : gridNav.node.id, name: gridNav.node.name }); setNewFolderName(""); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink hover:bg-fog"><FolderIcon className="h-4 w-4 text-steel" /> New folder</button>
-                  <div className="my-2 border-t border-hairline-soft" />
-                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); fileInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink hover:bg-fog disabled:opacity-50">📄 File upload</button>
-                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink hover:bg-fog disabled:opacity-50">📁 Folder upload</button>
+                <div role="menu" className="absolute left-0 top-[48px] z-20 w-64 overflow-hidden rounded-xl border border-[#e8eaed] bg-white py-2 shadow-xl">
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); setNewFolderParent({ id: gridNav.node.id.startsWith("folder-") ? data.root.id : gridNav.node.id, name: gridNav.node.name }); setNewFolderName(""); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa]"><FolderIcon className="h-4 w-4 text-[#5f6368]" /> New folder</button>
+                  <div className="my-2 border-t border-[#e8eaed]" />
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); fileInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa] disabled:opacity-50">📄 File upload</button>
+                  <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click(); }} disabled={uploading} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-[#f8f9fa] disabled:opacity-50">📁 Folder upload</button>
                 </div>
               </>
             )}
           </div>
 
           <div className="min-w-0 flex-1 max-w-[560px]">
-            <div className="flex items-center gap-3 rounded-full bg-fog px-4 py-2.5 ring-1 ring-hairline focus-within:ring-azure/40">
-              <span className="text-steel">⌕</span>
-              <input value={driveSearch} onChange={(e) => setDriveSearch(e.target.value)} placeholder={`Search in ${gridNav.node.name || projectName}`} className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-stone" />
-              {driveSearch && <button onClick={() => setDriveSearch("")} className="text-steel hover:text-ink">✕</button>}
+            <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-[#e8eaed] focus-within:ring-[#1a73e8]/30">
+              <span className="text-[#5f6368]">⌕</span>
+              <input value={driveSearch} onChange={(e) => setDriveSearch(e.target.value)} placeholder={`Search in ${gridNav.node.name || projectName}`} className="w-full bg-transparent text-sm outline-none placeholder:text-[#5f6368]" />
+              {driveSearch && <button onClick={() => setDriveSearch("")} className="text-[#5f6368] hover:text-ink">✕</button>}
             </div>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <span className="hidden font-mono text-xs text-steel sm:block">{totalLabel}{selected.size>0 ? ` · ${selected.size} selected` : ""}</span>
+            <span className="hidden font-mono text-xs text-[#5f6368] sm:block">{totalLabel}{selected.size>0 ? ` · ${selected.size} selected` : ""}</span>
             {selected.size>0 && (
               <>
-                <button onClick={downloadSelected} disabled={downloading==="selected"} className="hidden sm:inline-flex rounded-full bg-azure px-4 py-1.5 text-xs font-medium text-white hover:bg-azure-deep disabled:opacity-50">{downloading==="selected"?"Zipping…":"Download"}</button>
-                <button onClick={deleteSelected} disabled={!!deleting} className="hidden sm:inline-flex rounded-full border border-hairline bg-canvas px-4 py-1.5 text-xs font-medium text-steel hover:bg-fog">Move to trash</button>
+                <button onClick={downloadSelected} disabled={downloading==="selected"} className="hidden sm:inline-flex rounded-full bg-[#1a73e8] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#185abc] disabled:opacity-50">{downloading==="selected"?"Zipping…":"Download"}</button>
+                <button onClick={deleteSelected} disabled={!!deleting} className="hidden sm:inline-flex rounded-full border border-[#e8eaed] bg-white px-4 py-1.5 text-xs font-medium text-[#5f6368] hover:bg-[#f8f9fa]">Move to trash</button>
               </>
             )}
-            <div className="flex rounded-full border border-hairline bg-canvas p-1">
-              <button onClick={()=>setView("grid")} aria-pressed={view==="grid"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="grid"?"bg-azure-soft text-azure":"text-steel"}`} title="Grid">▦</button>
-              <button onClick={()=>setView("list")} aria-pressed={view==="list"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="list"?"bg-azure-soft text-azure":"text-steel"}`} title="List">☰</button>
+            <div className="flex rounded-full border border-[#e8eaed] bg-white p-1">
+              <button onClick={()=>setView("grid")} aria-pressed={view==="grid"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="grid"?"bg-[#e8f0fe] text-[#1967d2]":"text-[#5f6368]"}`} title="Grid">▦</button>
+              <button onClick={()=>setView("list")} aria-pressed={view==="list"} className={`grid h-7 w-7 place-items-center rounded-full ${view==="list"?"bg-[#e8f0fe] text-[#1967d2]":"text-[#5f6368]"}`} title="List">☰</button>
             </div>
-            <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} className="grid h-8 w-8 place-items-center rounded-full bg-canvas border border-hairline text-steel hover:bg-fog" title={`Sort ${sortDir}`}>↕</button>
+            <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} className="grid h-8 w-8 place-items-center rounded-full bg-white border border-[#e8eaed] text-[#5f6368] hover:bg-[#f8f9fa]" title={`Sort ${sortDir}`}>↕</button>
           </div>
         </div>
 
         <div className="flex flex-1 min-h-0">
           {/* Left Drive nav */}
-          <aside className="hidden w-[256px] shrink-0 flex-col bg-fog px-3 py-3 md:flex">
+          <aside className="hidden w-[256px] shrink-0 flex-col bg-[#f8f9fa] px-3 py-3 md:flex">
             <nav className="space-y-1">
-              <button onClick={()=>{setGridPath([]); setDriveSearch("");}} className={`flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium ${gridNav.valid.length===0?"bg-azure-soft text-azure-deep font-bold":"hover:bg-mist text-ink"}`}>
+              <button onClick={()=>{setGridPath([]); setDriveSearch("");}} className={`flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium ${gridNav.valid.length===0?"bg-[#c2e7ff] text-[#001d35]":"hover:bg-[#e8eaed] text-[#1f1f1f]"}`}>
                 <span className="grid h-5 w-5 place-items-center text-base">◈</span> My Drive
               </button>
-              <div className="px-3 py-2 text-xs font-medium text-steel">Folders · {gridNav.folders.length} · Files · {gridNav.files.length}</div>
-              <div className="rounded-xl bg-canvas p-3 shadow-xs border border-hairline">
-                <p className="text-xs font-medium text-ink">Storage</p>
-                <div className="mt-2 h-1 rounded-full bg-hairline"><div className="h-1 rounded-full bg-azure" style={{width: `${Math.min(100, Math.round((data.totalBytes/(15*1024**3))*100))}%`}} /></div>
-                <p className="mt-1 font-mono text-[11px] text-steel">{formatBytes(data.totalBytes)} used</p>
-                <a href="https://drive.google.com/drive/quota" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-azure hover:underline">Get more storage</a>
+              <div className="px-3 py-2 text-xs font-medium text-[#444746]">Folders · {gridNav.folders.length} · Files · {gridNav.files.length}</div>
+              <div className="rounded-xl bg-white p-3 shadow-sm border border-[#e8eaed]">
+                <p className="text-xs font-medium">Storage</p>
+                <div className="mt-2 h-1 rounded-full bg-[#e8eaed]"><div className="h-1 rounded-full bg-[#1a73e8]" style={{width: `${Math.min(100, Math.round((data.totalBytes/(15*1024**3))*100))}%`}} /></div>
+                <p className="mt-1 font-mono text-[11px] text-[#5f6368]">{formatBytes(data.totalBytes)} used</p>
+                <a href="https://drive.google.com/drive/quota" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-[#1a73e8] hover:underline">Get more storage</a>
               </div>
             </nav>
             {(uploadError || zipProgress || scanning || uploading) && (
               <div className="mt-4 space-y-2">
-                {uploadError && <div className="rounded-lg bg-error-bg px-3 py-2 text-xs text-error flex justify-between gap-2"><span className="min-w-0">{uploadError}</span><button onClick={()=>setUploadError(null)} className="shrink-0 underline">Dismiss</button></div>}
-                {zipProgress && <div className="rounded-lg bg-azure-soft px-3 py-2 font-mono text-xs text-azure-deep">{zipProgress}</div>}
-                {scanning && <div className="rounded-lg bg-canvas border border-hairline px-3 py-2 text-xs text-steel">Reading dropped items…</div>}
-                {uploading && <div className="rounded-lg bg-azure-soft px-3 py-2 text-xs text-azure-deep">Uploading — see toast at bottom right…</div>}
+                {uploadError && <div className="rounded-lg bg-[#fce8e6] px-3 py-2 text-xs text-[#a50e0e] flex justify-between gap-2"><span className="min-w-0">{uploadError}</span><button onClick={()=>setUploadError(null)} className="shrink-0 underline">Dismiss</button></div>}
+                {zipProgress && <div className="rounded-lg bg-[#e8f0fe] px-3 py-2 font-mono text-xs text-[#1967d2]">{zipProgress}</div>}
+                {scanning && <div className="rounded-lg bg-white border border-[#e8eaed] px-3 py-2 text-xs text-[#5f6368]">Reading dropped items…</div>}
+                {uploading && <div className="rounded-lg bg-[#e8f0fe] px-3 py-2 text-xs text-[#1967d2]">Uploading — see toast at bottom right…</div>}
               </div>
             )}
           </aside>
 
-          {/* Main canvas — Drive canvas */}
-          <div className="flex min-w-0 flex-1 flex-col bg-canvas md:rounded-tl-2xl md:shadow-xs">
+          {/* Main canvas — white Drive canvas */}
+          <div className="flex min-w-0 flex-1 flex-col bg-white md:rounded-tl-2xl md:shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
             {/* Breadcrumb + inline actions */}
             <div className="flex flex-wrap items-center gap-2 border-b border-[#e8eaed] px-4 py-3">
               <div className="flex items-center gap-1.5 min-w-0">

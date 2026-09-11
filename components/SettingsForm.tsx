@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function SettingsForm({
   initialDisplayName,
@@ -188,6 +189,15 @@ export function SettingsForm({
           )}
         </div>
         {avatarMsg && <p className="mt-2 text-xs text-steel">{avatarMsg}</p>}
+      </div>
+
+      {/* Appearance / Dark mode toggle */}
+      <div className="border-t border-hairline-soft pt-5">
+        <p className="font-mono text-xs uppercase tracking-wider text-steel">Appearance</p>
+        <p className="mt-1 text-xs text-steel">Choose your preferred workspace theme (Light, Dark, or System).</p>
+        <div className="mt-3 max-w-sm">
+          <ThemeToggle variant="select" />
+        </div>
       </div>
 
       {/* Profile — display name + Vaayu field/role */}
