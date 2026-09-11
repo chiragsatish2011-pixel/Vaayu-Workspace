@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DISABLED_MSG =
-  "Scheduling is disabled while Calls is paused (Daily.co payment-method wall). Remove DAILY_API_KEY safely; scheduling returns when Calls is re-enabled.";
+  "Scheduling is paused while Calls is unavailable. It will return automatically once calls are re-enabled — please try again later.";
 
 function disabled() {
   return NextResponse.json({ error: DISABLED_MSG, code: "calls-disabled" }, { status: 503 });

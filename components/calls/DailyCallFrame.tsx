@@ -367,19 +367,18 @@ function DailyCallInner({ url, type, displayName, onLeave, onError }: DailyCallF
               </div>
               {isBillingError ? (
                 <>
-                  <p className="mt-3 text-sm font-semibold text-ink">Daily.co needs a payment method</p>
+                  <p className="mt-3 text-sm font-semibold text-ink">Calls need billing enabled</p>
                   <p className="mt-1 text-xs leading-relaxed text-steel">
-                    Your Daily.co account (<span className="font-mono">account-missing-payment-method</span>) is blocking room creation/joins. This is Daily’s billing check — not our app. Free-tier still requires a card on file (you’re not charged until you exceed free minutes).
+                    Our calling provider is blocking new rooms over a billing check — a payment method is required on file, even on its free tier. This isn&apos;t something you did, and you aren&apos;t being charged.
                   </p>
                   <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left">
-                    <p className="text-xs font-semibold text-amber-900">Fix in 30 seconds</p>
+                    <p className="text-xs font-semibold text-amber-900">What to do</p>
                     <ol className="mt-1 list-decimal pl-4 text-xs leading-relaxed text-amber-900/80">
-                      <li>Open <a href="https://dashboard.daily.co/settings/billing" target="_blank" rel="noreferrer" className="font-semibold underline">dashboard.daily.co → Settings → Billing</a>.</li>
-                      <li>Add a card and save.</li>
+                      <li>Open your provider&apos;s billing settings and add a card.</li>
                       <li>Come back here → click <span className="font-semibold">Back to Calls</span> → start a new call.</li>
                     </ol>
                   </div>
-                  <p className="mt-2 text-[11px] text-stone">No card ever touches our servers — it’s stored only in Daily. After adding it, this error disappears immediately.</p>
+                  <p className="mt-2 text-[11px] text-stone">No card details ever touch our servers — they stay with the provider. After adding one, this error disappears immediately.</p>
                 </>
               ) : (
                 <>

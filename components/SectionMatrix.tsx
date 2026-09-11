@@ -50,7 +50,7 @@ export function StatusTable() {
     <div className="overflow-hidden rounded-2xl border border-hairline bg-canvas">
       <div className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-hairline bg-fog px-5 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-steel sm:grid-cols-[1fr_180px_130px_40px]">
         <span>Section</span>
-        <span className="hidden sm:block">Ships in</span>
+        <span className="hidden sm:block">Status</span>
         <span className="hidden sm:block">Status</span>
         <span className="hidden sm:block" />
       </div>

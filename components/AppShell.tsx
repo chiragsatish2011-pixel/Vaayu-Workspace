@@ -93,7 +93,7 @@ export function AppShell({
               <ThemeToggle compact />
               <Badge tone="live">
                 <span className="h-1.5 w-1.5 rounded-full bg-success-text" />
-                Phase 1
+                Live
               </Badge>
               <span title={`${primary} · ${user.role}`}>
                 <UserAvatar displayName={user.displayName} email={user.email} userId={user.id ?? undefined} avatarDriveId={user.avatarDriveId} size={36} />
@@ -107,8 +107,7 @@ export function AppShell({
         <footer className="border-t border-hairline-soft">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-5 font-mono text-[11px] uppercase tracking-[0.18em] text-stone sm:px-6">
             <span>Vaayu Workspace</span>
-            <span>Phase 01 · Live</span>
-            <span className="ml-auto">Vercel + Neon · Zero hardcoded secrets</span>
+            <span className="ml-auto">© {new Date().getFullYear()}</span>
           </div>
         </footer>
       </div>

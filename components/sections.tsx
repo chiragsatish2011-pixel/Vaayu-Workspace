@@ -35,7 +35,7 @@ export const SECTIONS: Section[] = [
     wordmark: "Checkpoints",
     tagline: "Track team timeline & progress.",
     blurb: "Add progress notes and milestone updates to keep the team aligned.",
-    phase: "Phase 1 · Active timeline",
+    phase: "Live · Active timeline",
     badge: { text: "Live", tone: "new" },
     gradient: "from-[#10b981] via-[#059669] to-[#047857]",
     accent: "#10b981",
@@ -43,9 +43,9 @@ export const SECTIONS: Section[] = [
     accentSoftBg: "bg-[#d1fae5]",
     icon: (p) => <FlagIcon {...p} />,
     planned: [
-      "Add notes for timeline milestones (e.g. landing page, mobile theme, bug fixes)",
-      "Accessible by all team members (admins and normal users)",
-      "Reverse chronological timeline with author roles and timestamps",
+      "Add notes for timeline milestones the whole team can follow",
+      "Visible to the whole team, with authors and timestamps",
+      "Newest-first timeline so recent progress is always on top",
     ],
   },
   {
@@ -56,7 +56,7 @@ export const SECTIONS: Section[] = [
     tagline: "Every team file, one browser.",
     blurb:
       "Browse, upload and manage the shared drive from inside your workspace.",
-    phase: "Phase 2 · Live browser",
+    phase: "Live · Team browser",
     badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#1456f0] via-[#2f6bf3] to-[#3daeff]",
@@ -65,9 +65,9 @@ export const SECTIONS: Section[] = [
     accentSoftBg: "bg-azure-soft",
     icon: (p) => <FolderIcon {...p} />,
     planned: [
-      "Server-side Drive connection — your files, zero credential exposure",
-      "File browser: list, upload, download and delete through one API",
-      "Automatic compression on upload to stretch every gigabyte",
+      "Shared team storage — your files, always in sync",
+      "File browser: browse, upload, download and organize in one place",
+      "Automatic compression on upload to save space",
     ],
   },
   {
@@ -77,8 +77,8 @@ export const SECTIONS: Section[] = [
     wordmark: "Projects",
     tagline: "Ship code as packages, not threads.",
     blurb:
-      "Publish described, previewable project bundles backed by Google Drive.",
-    phase: "Phase 2b · Live storage",
+      "Publish described, previewable project bundles backed by secure team storage.",
+    phase: "Live · Team storage",
     badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#ff5530] via-[#f9603a] to-[#ea5ec1]",
@@ -89,7 +89,7 @@ export const SECTIONS: Section[] = [
     planned: [
       "Upload form: title, description, preview image + compressed bundle",
       "Interactive cards with live image lightbox and one-click download",
-      "Direct Google Drive cloud backend with zero credential exposure",
+      "Cloud-backed storage, always available to the team",
     ],
   },
   {
@@ -99,8 +99,8 @@ export const SECTIONS: Section[] = [
     wordmark: "Chat",
     tagline: "Talk where the work lives.",
     blurb: "Real-time channels per project with persistent history.",
-    phase: "Phase 3 · Realtime chat",
-    badge: { text: "Phase 3", tone: "beta" },
+    phase: "Live · Realtime chat",
+    badge: { text: "Live", tone: "new" },
     gradient:
       "from-[#a855f7] via-[#8b5cf6] to-[#ea5ec1]",
     accent: "#a855f7",
@@ -108,8 +108,8 @@ export const SECTIONS: Section[] = [
     accentSoftBg: "bg-[#f1e8ff]",
     icon: (p) => <ChatIcon {...p} />,
     planned: [
-      "Live channels powered by Pusher or Ably under the hood",
-      "Message history in Postgres — nothing important scrolls away",
+      "Live channels with instant delivery",
+      "Full message history — nothing important scrolls away",
       "One channel per project, plus team-wide announcements",
     ],
   },

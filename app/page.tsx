@@ -20,9 +20,9 @@ const marqueeItems = [
   "Files",
   "Projects",
   "Chat",
-  "Phase 01 live",
+  "Always in sync",
   "Secure sessions",
-  "Vercel + Neon",
+  "One workspace",
 ];
 
 // Setup state can change at any time (fresh install → configured), so this
@@ -83,10 +83,10 @@ export default async function DashboardPage() {
         />
         <div className="relative">
           <p className="animate-fade-up font-mono text-xs uppercase tracking-[0.24em] text-stone">
-            Team workspace — Phase 01
+            Team workspace
           </p>
           <h1
-            className="mt-4 max-w-3xl animate-fade-up font-display text-5xl font-bold leading-[1.02] tracking-[-0.03em] sm:text-7xl"
+            className="mt-4 max-w-3xl animate-fade-up font-display text-4xl font-bold leading-[1.02] tracking-[-0.03em] sm:text-7xl"
             style={{ animationDelay: "90ms" }}
           >
             <Greeting />, team.
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
             <Badge tone="live" className="align-middle">
               {user.role}
             </Badge>{" "}
-            — here&apos;s what&apos;s live and what lands next.
+            — here&apos;s your workspace at a glance.
           </p>
           <div
             className="mt-7 flex animate-fade-up flex-wrap items-center gap-3"
@@ -117,10 +117,10 @@ export default async function DashboardPage() {
               <ArrowRightIcon className="h-4 w-4" />
             </a>
             <a
-              href="#roadmap"
+              href="#status"
               className="press inline-flex h-12 items-center rounded-full border border-ink px-7 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-ink hover:text-white"
             >
-              View roadmap
+              View sections
             </a>
           </div>
 
@@ -226,7 +226,7 @@ export default async function DashboardPage() {
               </h2>
             </div>
             <p className="flex items-center gap-2 text-sm text-steel">
-              <LiveDot /> Auth &amp; shell live now
+              <LiveDot /> Live now
             </p>
           </div>
         </Reveal>
@@ -235,18 +235,18 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Roadmap table ── */}
-      <section id="roadmap" className="scroll-mt-24 pt-12">
+      {/* ── Sections status ── */}
+      <section id="status" className="scroll-mt-24 pt-12">
         <Reveal>
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-stone">
-            Roadmap
+            Sections at a glance
           </p>
           <h2 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] sm:text-4xl">
-            What lands, and when.
+            Everything in one place.
           </h2>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-steel">
-            Every section is already wired into navigation, auth and layout —
-            later phases slot straight in without restructuring.
+            Files, projects, chat and checkpoints — every section below is
+            live and ready to use.
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-6">
@@ -254,12 +254,12 @@ export default async function DashboardPage() {
         </Reveal>
         <Reveal delay={180}>
           <p className="mt-6 text-sm text-steel">
-            Building something meanwhile?{" "}
+            Have something to share?{" "}
             <Link
               href="/projects"
               className="font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-azure-deep"
             >
-              Peek at the Projects plan
+              Publish it in Projects
             </Link>
           </p>
         </Reveal>

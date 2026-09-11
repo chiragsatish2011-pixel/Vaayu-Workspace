@@ -24,7 +24,7 @@ export function AuthLayout({
       {/* Announcement bar */}
       <div className="flex min-h-9 items-center justify-center gap-2 bg-ink px-4 py-2 text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/85">
-          Phase 1 · Files, Projects, Chat &amp; Calls ship in later phases
+          Secure sign-in to your workspace
         </p>
       </div>
 
@@ -112,9 +112,7 @@ export function AuthLayout({
             <div className="mt-auto flex items-center gap-5 pt-12 font-mono text-[11px] uppercase tracking-[0.2em] text-white/40">
               <span>Secure sessions</span>
               <span aria-hidden>·</span>
-              <span>Hashed passwords</span>
-              <span aria-hidden>·</span>
-              <span>Vercel + Neon</span>
+              <span>Private workspace</span>
             </div>
           </div>
         </div>

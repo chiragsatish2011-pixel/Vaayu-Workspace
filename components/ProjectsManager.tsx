@@ -1019,7 +1019,7 @@ export function ProjectsManager({
                   Publish New Project
                 </h2>
                 <p className="mt-1 text-xs text-steel">
-                  Upload any project file and metadata to your Google Drive backend.
+                  Upload any project file and metadata to your team storage.
                 </p>
               </div>
               <button

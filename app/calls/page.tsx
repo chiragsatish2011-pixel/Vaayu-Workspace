@@ -30,19 +30,19 @@ export default async function CallsPage() {
         <div className="mt-8 animate-fade-up rounded-2xl border border-amber-200 bg-amber-50 p-6" style={{ animationDelay: "220ms" }}>
           <h2 className="font-display text-lg font-bold text-amber-900">Why you see this</h2>
           <p className="mt-2 text-sm leading-relaxed text-amber-900/80">
-            We were using <span className="font-semibold">Daily.co</span> to run calls. Daily recently requires a <span className="font-semibold">payment method on file</span> before it lets any room start or join — even on its free tier. Without a card it returns
-            <code className="mx-1 rounded bg-white px-1.5 py-0.5 font-mono text-xs">account-missing-payment-method</code>
-            and every call shows “Couldn’t join call.” That’s the screen you saw.
+            Our calling provider recently started requiring a <span className="font-semibold">payment method on file</span> before any room can start
+            or join — even on its free tier. Without one, every call fails with a provider billing error. That&apos;s the screen you saw.
           </p>
           <p className="mt-3 text-sm leading-relaxed text-amber-900/80">
-            Because the workspace can’t move forward while that bill-wall is up, we’ve <span className="font-semibold">turned Calls off everywhere</span> for now — the “Start Call” buttons in projects and checkpoints are hidden, the call APIs are disabled, and you don’t need to keep <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs">DAILY_API_KEY</code> in Vercel. You can safely delete that env var.
+            While that requirement stands, we&apos;ve <span className="font-semibold">turned Calls off everywhere</span> for now — the call buttons in
+            projects and checkpoints are hidden and background calling services are paused. There&apos;s nothing you need to change or remove on your side.
           </p>
           <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-amber-900">What happens next</p>
             <ul className="mt-2 list-disc pl-5 text-sm leading-relaxed text-steel">
-              <li>Calls stay hidden until we switch to a free provider that doesn’t need a card (e.g. Jitsi) or re-enable Daily with billing.</li>
-              <li>No data was lost — past call history stays in the database but is not shown while Calls is paused.</li>
-              <li>If you want calls back, tell us and we’ll wire the free option — no payment needed.</li>
+              <li>Calls stay hidden until calling is re-enabled with a provider that needs no card.</li>
+              <li>No data was lost — past call history is kept, just hidden while Calls is paused.</li>
+              <li>If you want calls back, tell us and we&apos;ll switch it on — no payment needed.</li>
             </ul>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
@@ -55,7 +55,6 @@ export default async function CallsPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-xs text-stone">You can remove <span className="font-mono">DAILY_API_KEY</span> from Vercel → Environment Variables safely after this deploy. Re-adding it later won’t break anything.</p>
       </section>
     </AppShell>
   );

@@ -85,7 +85,7 @@ export default async function ProjectsPage() {
         >
           Publish, share, and download project files of any type — or entire
           folder trees with their structure preserved — with preview snapshots. All files are securely stored in your team&apos;s dedicated
-          Google Drive backend.
+          team storage.
         </p>
 
         {/* Interactive Manager */}

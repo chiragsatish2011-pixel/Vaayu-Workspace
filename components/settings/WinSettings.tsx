@@ -116,15 +116,15 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
           <div className="flex items-center gap-2 text-xs">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">◈</span>
             <span className="leading-tight">
-              <span className="block font-semibold">Drive</span>
+              <span className="block font-semibold">Storage</span>
               <span className="text-stone">Connected</span>
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6f0ff] text-[#0078d4]">●</span>
             <span className="leading-tight">
-              <span className="block font-semibold">Vercel + Neon</span>
-              <span className="text-stone">Running</span>
+              <span className="block font-semibold">Workspace</span>
+              <span className="text-stone">Online</span>
             </span>
           </div>
         </div>
@@ -575,19 +575,15 @@ function AboutPanel({ user }: { user: WinUser }) {
       <h2 className="font-display text-2xl font-bold">About</h2>
       <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <p className="font-semibold">Vaayu Workspace</p>
-        <p className="mt-1 font-mono text-xs text-steel">Phase 01 · Vercel + Neon · Drive backend</p>
+        <p className="mt-1 font-mono text-xs text-steel">Private team workspace</p>
         <div className="mt-4 grid gap-3 text-sm">
           <div className="flex justify-between gap-3 border-b border-hairline-soft py-2">
             <span className="shrink-0 text-steel">Signed in as</span>
             <span className="min-w-0 truncate text-right font-mono text-ink" title={user.email}>{user.email}</span>
           </div>
-          <div className="flex justify-between gap-3 border-b border-hairline-soft py-2">
+          <div className="flex justify-between gap-3 py-2">
             <span className="shrink-0 text-steel">Role</span>
             <span className="min-w-0 truncate text-right font-semibold capitalize">{user.role}</span>
-          </div>
-          <div className="flex justify-between gap-3 py-2">
-            <span className="shrink-0 text-steel">Workspace</span>
-            <span className="min-w-0 truncate text-right font-mono text-xs">vaayu-workspace</span>
           </div>
         </div>
       </div>
