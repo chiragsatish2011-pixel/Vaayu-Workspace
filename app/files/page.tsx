@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/AppShell";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FilesManager } from "@/components/FilesManager";
 import { requireActiveSession } from "@/lib/session";
 
@@ -19,7 +20,9 @@ export default async function FilesPage() {
       active="/files"
       fullBleed
     >
-      <FilesManager />
+      <ErrorBoundary name="Files">
+        <FilesManager />
+      </ErrorBoundary>
     </AppShell>
   );
 }

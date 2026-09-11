@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
-const ChonkyDrive = dynamic(() => import("@/components/files/ChonkyDrive").then(m => m.ChonkyDrive), { ssr: false, loading: () => <div className="flex flex-1 flex-col bg-[#f8f9fa] p-6"><div className="h-64 animate-pulse rounded-2xl bg-white shadow-sm" /></div> });
+const ChonkyDrive = dynamic(() => import("@/components/files/ChonkyDrive").then(m => m.ChonkyDrive), { ssr: false, loading: () => <div className="flex flex-1 flex-col bg-[#f8f9fa] p-6 dark:bg-[#09090b]"><div className="h-64 animate-pulse rounded-2xl bg-white shadow-sm dark:bg-[#1a1a1e]" /></div> });
 
 /**
  * Team Files manager — Drive-identical file browser.
@@ -76,7 +76,7 @@ export function FilesManager() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f8f9fa]">
+    <div className="flex min-h-0 flex-1 flex-col bg-[#f8f9fa] dark:bg-[#09090b]">
       <ChonkyDrive rootId={root.id} rootName={root.name} refreshKey={refreshKey} onUploaded={handleUploaded} />
     </div>
   );

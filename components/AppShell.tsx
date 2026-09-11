@@ -3,6 +3,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { MobileNav, NavLinks } from "@/components/MobileNav";
 import { OnboardingFlow } from "@/components/OnboardingFlow";
 import { SignOutButton } from "@/components/SignOutButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { Wordmark } from "@/components/Wordmark";
@@ -87,6 +88,7 @@ export function AppShell({
               <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2 sm:ml-0">
+              <ThemeToggle compact />
               <Badge tone="live">
                 <span className="h-1.5 w-1.5 rounded-full bg-success-text" />
                 Phase 1

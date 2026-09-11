@@ -4,11 +4,12 @@ import { useEffect, useState, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getDisplayName } from "@/lib/userColor";
 import { UploadPreferenceToggle } from "@/components/UploadPreferenceToggle";
+import { useTheme, type ThemeChoice } from "@/components/ThemeToggle";
 import {
   BellIcon,
-  GearIcon,
   InfoIcon,
   MonitorIcon,
+  PaintIcon,
   ShieldIcon,
   UserIcon,
   GridIcon,
@@ -24,11 +25,12 @@ type WinUser = {
   jobTitle?: string | null;
 };
 
-type NavId = "home" | "system" | "accounts" | "security" | "notifications" | "about";
+type NavId = "home" | "system" | "appearance" | "accounts" | "security" | "notifications" | "about";
 
 const NAV: Array<{ id: NavId; label: string; desc: string; icon: React.ComponentType<React.SVGProps<SVGSVGElement>> }> = [
   { id: "home", label: "Home", desc: "Overview", icon: GridIcon },
   { id: "system", label: "System", desc: "Uploads & storage", icon: MonitorIcon },
+  { id: "appearance", label: "Appearance", desc: "Light & dark", icon: PaintIcon },
   { id: "accounts", label: "Accounts", desc: "Profile & avatar", icon: UserIcon },
   { id: "security", label: "Privacy & security", desc: "Password & role", icon: ShieldIcon },
   { id: "notifications", label: "Notifications", desc: "Calls paused", icon: BellIcon },
@@ -38,9 +40,9 @@ const NAV: Array<{ id: NavId; label: string; desc: string; icon: React.Component
 export function WinSettings({ user }: { user: WinUser }) {
   const [active, setActive] = useState<NavId>("home");
   return (
-    <div className="flex min-h-[calc(100dvh-118px)] flex-col bg-[#fbfbfb] md:flex-row">
+    <div className="flex min-h-[calc(100dvh-118px)] flex-col bg-[#fbfbfb] dark:bg-[#09090b] md:flex-row">
       {/* Left - Windows sidebar */}
-      <aside className="w-full shrink-0 border-b border-hairline-soft bg-[#f3f3f3] p-3 md:w-[280px] md:border-b-0 md:border-r">
+      <aside className="w-full shrink-0 border-b border-hairline-soft bg-[#f3f3f3] p-3 dark:bg-[#101014] md:w-[280px] md:border-b-0 md:border-r">
           {/* User header like image */}
           <div className="flex items-center gap-3 rounded-xl px-2 py-3">
             <UserAvatar displayName={user.displayName} email={user.email} userId={user.id} avatarDriveId={user.avatarDriveId} size={44} />
@@ -60,10 +62,10 @@ export function WinSettings({ user }: { user: WinUser }) {
                   key={n.id}
                   onClick={() => setActive(n.id)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                    isActive ? "bg-white shadow-sm border border-hairline-soft text-ink" : "text-charcoal hover:bg-white/60 hover:text-ink"
+                    isActive ? "border border-hairline-soft bg-white text-ink shadow-sm dark:bg-[#1b1b1f]" : "text-charcoal hover:bg-white/60 hover:text-ink dark:hover:bg-white/10"
                   }`}
                 >
-                  <span className={`grid h-7 w-7 place-items-center rounded-md ${isActive ? "bg-[#0078d4] text-white" : "bg-white border border-hairline-soft text-steel"} `}>
+                  <span className={`grid h-7 w-7 place-items-center rounded-md ${isActive ? "bg-[#0078d4] text-white" : "border border-hairline-soft bg-white text-steel dark:bg-[#1b1b1f]"} `}>
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0">
@@ -78,10 +80,11 @@ export function WinSettings({ user }: { user: WinUser }) {
         </aside>
 
         {/* Right - main */}
-        <div className="min-w-0 flex-1 bg-[#f9f9f9] p-4 sm:p-8">
+        <div className="min-w-0 flex-1 bg-[#f9f9f9] p-4 dark:bg-[#0c0c0e] sm:p-8">
           <div className="mx-auto w-full max-w-4xl">
           {active === "home" && <HomePanel user={user} onNav={setActive} />}
           {active === "system" && <SystemPanel />}
+          {active === "appearance" && <AppearancePanel />}
           {active === "accounts" && <AccountsPanel user={user} />}
           {active === "security" && <SecurityPanel user={user} />}
           {active === "notifications" && <NotificationsPanel />}
@@ -98,7 +101,7 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
       <h2 className="font-display text-2xl font-bold tracking-tight">Home</h2>
 
       {/* Device header like DESKTOP-IKK3TOO */}
-      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-hairline bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-hairline bg-white p-4 shadow-sm dark:bg-[#131316]">
         <div className="h-14 w-20 overflow-hidden rounded-lg border border-hairline bg-ink grid place-items-center">
           <span className="font-display text-lg font-bold tracking-tight text-white">{getDisplayName(user.displayName, user.email).slice(0, 2).toUpperCase()}</span>
         </div>
@@ -128,9 +131,9 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
       </div>
 
       {/* Info banner like "You need to activate Windows..." */}
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/60 dark:bg-[#211a0d]">
         <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0078d4] text-[11px] font-bold text-white">i</span>
-        <p className="flex-1 text-sm leading-relaxed text-amber-900">
+        <p className="flex-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
           Calls is paused workspace-wide — Daily.co needs a card on file. Open{" "}
           <button onClick={() => onNav("notifications")} className="whitespace-nowrap font-semibold underline">
             Notifications
@@ -145,7 +148,7 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
 
       <div className="grid gap-4 lg:grid-cols-[1.7fr_0.9fr]">
         {/* Left main card */}
-        <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
           <div className="flex items-center gap-2">
             <span className="grid h-6 w-6 place-items-center rounded bg-[#f3f3f3] text-xs">▦</span>
             <p className="text-sm font-semibold">Your Vaayu account</p>
@@ -165,7 +168,7 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
         </div>
 
         {/* Right recommended like image */}
-        <div className="rounded-xl border border-hairline bg-white shadow-sm">
+        <div className="rounded-xl border border-hairline bg-white shadow-sm dark:bg-[#131316]">
           <div className="border-b border-hairline-soft p-4">
             <p className="text-sm font-semibold">Recommended settings</p>
             <p className="text-xs text-stone">Recent and commonly used</p>
@@ -188,7 +191,7 @@ function HomePanel({ user, onNav }: { user: WinUser; onNav: (id: NavId) => void 
         </div>
       </div>
 
-      <div className="rounded-xl border border-hairline bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-4 shadow-sm dark:bg-[#131316]">
         <p className="text-sm font-semibold">Personalize your workspace</p>
         <p className="mt-1 text-xs text-steel">Pick an accent — it tints headers and primary buttons workspace-wide. Saved on this device.</p>
         <PersonalizeSwatches />
@@ -263,7 +266,7 @@ function SystemPanel() {
     <div className="space-y-4">
       <h2 className="font-display text-2xl font-bold">System</h2>
       <p className="text-sm text-steel">How the workspace behaves on this device.</p>
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <div className="flex items-center gap-3">
           <MonitorIcon className="h-5 w-5 text-steel" />
           <h3 className="font-semibold">Uploads</h3>
@@ -273,12 +276,59 @@ function SystemPanel() {
           <UploadPreferenceToggle />
         </div>
       </div>
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm opacity-60">
+      <div className="rounded-xl border border-hairline bg-white p-5 opacity-60 shadow-sm dark:bg-[#131316]">
         <h3 className="font-semibold">Storage</h3>
         <p className="mt-1 text-sm text-steel">Drive usage and quotas surface on the Files page. This panel is a shortcut — real controls live there.</p>
         <a href="/files" className="mt-3 inline-flex rounded-full border border-hairline px-4 py-1.5 text-xs font-semibold hover:border-ink">
           Open Files
         </a>
+      </div>
+    </div>
+  );
+}
+
+function AppearancePanel() {
+  const { choice, set, mounted } = useTheme();
+  const options: Array<{ id: ThemeChoice; label: string; desc: string }> = [
+    { id: "light", label: "Light", desc: "Bright canvas" },
+    { id: "dark", label: "Dark", desc: "Dimmed canvas" },
+    { id: "system", label: "System", desc: "Follows device" },
+  ];
+  return (
+    <div className="space-y-4">
+      <h2 className="font-display text-2xl font-bold">Appearance</h2>
+      <p className="text-sm text-steel">Light or dark canvas across the whole workspace. Saved on this device.</p>
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
+        <div className="flex items-center gap-3">
+          <PaintIcon className="h-5 w-5 text-steel" />
+          <h3 className="font-semibold">Theme</h3>
+          {!mounted && <span className="font-mono text-xs text-stone">Loading…</span>}
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Color theme">
+          {options.map((o) => {
+            const selected = choice === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => set(o.id)}
+                className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                  selected
+                    ? "border-ink ring-2 ring-ink/20 dark:border-white dark:ring-white/20"
+                    : "border-hairline hover:border-steel/50"
+                }`}
+              >
+                <span className="block text-sm font-semibold">{o.label}</span>
+                <span className="mt-0.5 block text-xs text-steel">{o.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 font-mono text-[11px] text-stone">
+          System follows your OS setting and updates automatically. The header toggle switches between light and dark directly.
+        </p>
       </div>
     </div>
   );
@@ -370,7 +420,7 @@ function AccountsPanel({ user }: { user: WinUser }) {
       <h2 className="font-display text-2xl font-bold">Accounts</h2>
       <p className="text-sm text-steel">Your profile across Vaayu — name, avatar, and team fields.</p>
 
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <div className="flex items-center gap-4">
           <UserAvatar displayName={displayName || user.displayName} email={user.email} avatarDriveId={avatarId} size={56} />
           <div>
@@ -396,7 +446,7 @@ function AccountsPanel({ user }: { user: WinUser }) {
         </div>
       </div>
 
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <p className="font-semibold">Your info</p>
         <div className="mt-4 space-y-4">
           <div>
@@ -472,7 +522,7 @@ function SecurityPanel({ user }: { user: WinUser }) {
       <h2 className="font-display text-2xl font-bold">Privacy & security</h2>
       <p className="text-sm text-steel">Sign-in and access for your account.</p>
 
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-semibold">Password</p>
@@ -492,7 +542,7 @@ function SecurityPanel({ user }: { user: WinUser }) {
         </form>
       </div>
 
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <p className="font-semibold">Permissions</p>
         <p className="mt-1 text-sm text-steel">
           Your workspace role is <span className="font-semibold text-ink">{user.role}</span>. Admins manage members and workspace settings; members can publish and comment. Your Vaayu field/title (“{user.department || "—"} · {user.jobTitle || "—"}”) is just profile info, not a permission.
@@ -507,12 +557,12 @@ function NotificationsPanel() {
     <div className="space-y-4">
       <h2 className="font-display text-2xl font-bold">Notifications</h2>
       <p className="text-sm text-steel">Alerts for calls and workspace activity.</p>
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-[#211a0d]">
         <div className="flex items-center gap-2">
-          <BellIcon className="h-5 w-5 text-amber-700" />
-          <p className="font-semibold text-amber-900">Calls paused</p>
+          <BellIcon className="h-5 w-5 text-amber-700 dark:text-amber-400" />
+          <p className="font-semibold text-amber-900 dark:text-amber-100">Calls paused</p>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-amber-900/80">
+        <p className="mt-2 text-sm leading-relaxed text-amber-900/80 dark:text-amber-100/80">
           Calls is disabled workspace-wide because Daily.co now blocks rooms until a payment method is on file. There’s nothing to configure here while Calls is paused. See{" "}
           <a href="/calls" className="font-semibold underline">
             /calls
@@ -520,7 +570,7 @@ function NotificationsPanel() {
           for the simple explanation. Chat and file notifications aren’t affected.
         </p>
       </div>
-      <div className="rounded-xl border border-hairline bg-white p-5 opacity-60 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 opacity-60 shadow-sm dark:bg-[#131316]">
         <p className="font-semibold">Browser permissions</p>
         <p className="mt-1 text-sm text-steel">When Calls returns, you’ll be able to allow browser notifications here to get alerts while the tab is in the background.</p>
       </div>
@@ -532,7 +582,7 @@ function AboutPanel({ user }: { user: WinUser }) {
   return (
     <div className="space-y-4">
       <h2 className="font-display text-2xl font-bold">About</h2>
-      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-hairline bg-white p-5 shadow-sm dark:bg-[#131316]">
         <p className="font-semibold">Vaayu Workspace</p>
         <p className="mt-1 font-mono text-xs text-steel">Phase 01 · Vercel + Neon · Drive backend</p>
         <div className="mt-4 grid gap-3 text-sm">

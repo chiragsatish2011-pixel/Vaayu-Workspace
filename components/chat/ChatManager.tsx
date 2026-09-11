@@ -857,6 +857,14 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
 
   const selected = convos.find((c) => c.id === selectedId) ?? null;
   const thread = selectedId ? (threads[selectedId] ?? { messages: [], hasMore: false, loading: true }) : null;
+  const threadQuery = threadSearch.trim().toLowerCase();
+  const shownMessages =
+    thread && threadQuery ? thread.messages.filter((m) => m.content.toLowerCase().includes(threadQuery)) : thread?.messages ?? null;
+  const myLastRead = selectedId ? (watermarks[selectedId]?.find((w) => w.userId === selfId)?.lastReadAt ?? null) : null;
+  const firstUnreadId =
+    thread && myLastRead && !threadQuery
+      ? (thread.messages.find((m) => m.userId !== selfId && Date.parse(m.createdAt) > Date.parse(myLastRead))?.id ?? null)
+      : null;
   const typingHere = selectedId ? (typing[selectedId] ?? []) : [];
   const totalUnread = convos.reduce((n, c) => n + c.unreadCount, 0);
 
@@ -1048,6 +1056,9 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                         })()}
                 </span>
               </button>
+              <button type="button" onClick={() => setShowThreadSearch((v) => !v)} aria-label="Search in conversation" title="Search in conversation" className="press grid h-9 w-9 shrink-0 place-items-center rounded-full border border-hairline hover:border-ink">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              </button>
               {selected.type === "group" && (
                 <button type="button" onClick={() => setGroupInfoOpen((v) => !v)} aria-label="Group info" className="press grid h-9 w-9 shrink-0 place-items-center rounded-full border border-hairline hover:border-ink">
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
@@ -1057,7 +1068,18 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
 
             <div className="flex min-h-0 flex-1">
               {/* Messages + composer */}
-              <div className="flex min-w-0 flex-1 flex-col">
+              <div className="relative flex min-w-0 flex-1 flex-col">
+                {showThreadSearch && (
+                  <div className="border-b border-hairline-soft bg-canvas px-4 py-2 sm:px-6">
+                    <input
+                      autoFocus
+                      value={threadSearch}
+                      onChange={(e) => setThreadSearch(e.target.value)}
+                      placeholder="Search in this conversation…"
+                      className="h-9 w-full rounded-lg border border-hairline bg-fog px-3 text-sm outline-none placeholder:text-stone focus:border-ink"
+                    />
+                  </div>
+                )}
                 <div
                   ref={listRef}
                   onScroll={() => {
@@ -1080,6 +1102,9 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {threadQuery && shownMessages?.length === 0 && (
+                        <p className="py-8 text-center text-sm text-steel">No matches for “{threadSearch.trim()}” in this conversation.</p>
+                      )}
                       {thread?.hasMore && (
                         <div className="text-center">
                           <button
@@ -1090,16 +1115,40 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                           </button>
                         </div>
                       )}
-                      {thread?.messages.map((m) => {
+                      {shownMessages?.map((m, idx, arr) => {
                         const isOwn = m.userId === selfId;
                         const meta = msgMeta(m);
+                        const dayLabel = (() => {
+                          const d = new Date(m.createdAt);
+                          const prev = idx > 0 ? arr[idx - 1]?.createdAt : undefined;
+                          if (prev && new Date(prev).toDateString() === d.toDateString()) return null;
+                          const now = new Date();
+                          if (d.toDateString() === now.toDateString()) return "Today";
+                          if (d.toDateString() === new Date(now.getTime() - 86400000).toDateString()) return "Yesterday";
+                          return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                        })();
                         const msgReactions = (selectedId && reactions[selectedId]?.[m.id]) || [];
                         const canEdit = isOwn && !meta.deleted;
                         const canDelete = (isOwn || isAdmin) && !meta.deleted;
                         const read = isOwn && !meta.deleted && isMsgReadByOthers(m);
                         const isEditing = editingMsgId === m.id;
                         return (
-                          <div key={m.id} id={`msg-${m.id}`} className={`group flex gap-3 scroll-mt-4 ${isOwn ? "flex-row-reverse" : ""}`}>
+                          <div key={m.id} id={`msg-${m.id}`} className="scroll-mt-4">
+                            {firstUnreadId === m.id && (
+                              <div className="my-3 flex items-center gap-3">
+                                <span className="h-px flex-1 bg-violet/30" />
+                                <span className="rounded-full bg-violet px-3 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white">New messages</span>
+                                <span className="h-px flex-1 bg-violet/30" />
+                              </div>
+                            )}
+                            {dayLabel && (
+                              <div className="my-3 flex items-center gap-3">
+                                <span className="h-px flex-1 bg-hairline-soft" />
+                                <span className="rounded-full bg-fog px-3 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-steel">{dayLabel}</span>
+                                <span className="h-px flex-1 bg-hairline-soft" />
+                              </div>
+                            )}
+                          <div className={`group flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
                             <UserAvatar displayName={m.displayName} email={m.userEmail} userId={m.userId} avatarDriveId={m.avatarDriveId} size={32} />
                             <div className={`flex max-w-[75%] flex-col ${isOwn ? "items-end" : "items-start"}`}>
                               <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
@@ -1176,7 +1225,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                                   )}
                                 </div>
                               )}
-                              {msgReactions.length > 0 && (
+                              {!meta.deleted && msgReactions.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {msgReactions.map((r) => (
                                     <button
@@ -1237,6 +1286,7 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                               )}
                             </div>
                           </div>
+                        </div>
                         );
                       })}
                     </div>
@@ -1244,6 +1294,19 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                   {threadError && <p className="mt-3 text-xs text-error">{threadError}</p>}
                 </div>
 
+                {!autoScroll && (shownMessages?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoScroll(true);
+                      listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+                    }}
+                    aria-label="Jump to latest messages"
+                    className="absolute bottom-24 right-6 z-10 grid h-10 w-10 place-items-center rounded-full bg-ink text-lg text-white shadow-xl hover:bg-charcoal"
+                  >
+                    ↓
+                  </button>
+                )}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1251,6 +1314,22 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
                   }}
                   className="border-t border-hairline-soft bg-canvas p-3"
                 >
+                  {replyTo && (
+                    <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-violet bg-fog px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-violet">Replying to {replyTo.author}</p>
+                        <p className="truncate text-xs text-steel">{replyTo.snippet}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTo(null)}
+                        aria-label="Cancel reply"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-steel hover:bg-white hover:text-ink"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <TiptapEditor
@@ -1297,6 +1376,41 @@ export function ChatManager({ currentUser, userRole, initialConversationId }: Ch
           </>
         )}
       </section>
+
+      {forwardMsg && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4" onClick={() => setForwardMsg(null)} role="dialog" aria-label="Forward message">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-canvas shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-hairline-soft px-4 py-3">
+              <h3 className="font-display text-sm font-bold text-ink">Forward to…</h3>
+              <button type="button" onClick={() => setForwardMsg(null)} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-full border border-hairline hover:border-ink">✕</button>
+            </div>
+            <p className="border-b border-hairline-soft bg-fog/60 px-4 py-2 text-xs text-steel">“{msgSnippet(forwardMsg)}”</p>
+            <ul className="max-h-72 overflow-y-auto p-2">
+              {convos
+                .filter((c) => c.id !== selectedId)
+                .map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      disabled={forwarding}
+                      onClick={() => void forwardMessage(c.id)}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-fog disabled:opacity-50"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-violet/15 text-xs text-violet">💬</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-ink">{convoTitle(c, selfId)}</span>
+                        <span className="block truncate text-[11px] text-steel">{c.type === "group" ? `${c.members.length} members` : c.members.find((x) => x.userId !== selfId)?.email ?? ""}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              {convos.filter((c) => c.id !== selectedId).length === 0 && (
+                <li className="px-3 py-4 text-center text-xs text-stone">No other chats yet.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {newChatOpen && (
         <NewChatModal

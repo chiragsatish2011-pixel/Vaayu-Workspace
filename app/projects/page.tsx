@@ -1,6 +1,7 @@
 ﻿import { desc, eq } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProjectsManager, type ProjectItem } from "@/components/ProjectsManager";
 import { Reveal } from "@/components/Reveal";
 import { db } from "@/db";
@@ -89,15 +90,17 @@ export default async function ProjectsPage() {
 
         {/* Interactive Manager */}
         <Reveal delay={200} className="mt-8">
-          <ProjectsManager
-            initialProjects={initialProjects}
-            currentUser={{
-              id: user.id,
-              email: user.email,
-              role: user.role,
-              displayName: user.displayName ?? null,
-            }}
-          />
+          <ErrorBoundary name="Projects">
+            <ProjectsManager
+              initialProjects={initialProjects}
+              currentUser={{
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                displayName: user.displayName ?? null,
+              }}
+            />
+          </ErrorBoundary>
         </Reveal>
       </section>
     </AppShell>

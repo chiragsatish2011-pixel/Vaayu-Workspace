@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * VAAYU DESIGN SYSTEM (synthesized from the 3 reference docs)
  * ─────────────────────────────────────────────────────────────
@@ -140,6 +142,68 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+/* ── Dark mode (class-based, persisted on <html>) ─────────────────────
+ * Semantic tokens above stay the source of truth for light mode.
+ * Flipping the same variables under `.dark` re-skins every
+ * `bg-canvas / bg-fog / text-ink / border-hairline / …` surface
+ * automatically — no per-component rewrites needed.
+ */
+.dark {
+  color-scheme: dark;
+  --color-ink: #f4f4f5;
+  --color-charcoal: #e4e4e7;
+  --color-slate: #a8a8b0;
+  --color-steel: #9d9da8;
+  --color-stone: #71717a;
+  --color-muted: #5c5c64;
+  --color-canvas: #09090b;
+  --color-fog: #131316;
+  --color-mist: #1b1b1f;
+  --color-hairline: #27272a;
+  --color-hairline-soft: #222226;
+  --color-azure-soft: #1a2a52;
+  --color-success-bg: #0c2b1f;
+  --color-success-text: #4ade80;
+  --color-error: #f87171;
+  --color-error-bg: #2a1215;
+  --color-focus: #7aa2ff;
+}
+
+.dark body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.dark ::selection {
+  background: var(--color-ink);
+  color: #09090b;
+}
+
+/* Primary `bg-ink text-white` buttons become light-on-dark automatically
+ * once --color-ink flips; the white text would vanish on the now-light
+ * button, so re-point it at the (now dark) canvas. Prefer `text-canvas`
+ * for new primary buttons — this rule keeps existing ones correct. */
+.dark .bg-ink.text-white {
+  color: #09090b;
+}
+
+/* Dark-mode surfaces for the third-party file browser (chonky2 renders
+ * its own light MUI-ish chrome; these rules pull it into the theme). */
+.dark [class*="chonky" i],
+.dark [class*="MuiPaper" i],
+.dark [class*="MuiToolbar" i] {
+  background-color: #131316;
+  color: #e4e4e7;
+  border-color: #27272a;
+}
+
+.dark .dot-grid {
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.12) 1px,
+    transparent 1px
+  );
 }
 
 body {

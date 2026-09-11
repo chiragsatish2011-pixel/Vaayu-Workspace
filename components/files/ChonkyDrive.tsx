@@ -134,6 +134,7 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
       // Hide internal system folders/files from main Drive view
       if (child.isFolder && (lower === "avatars" || lower === "voice notes")) continue;
       if (!child.isFolder && lower.startsWith("avatar-")) continue;
+      const isDir = Boolean(child.isFolder);
       const mime = child.mimeType || (isDir ? "application/vnd.google-apps.folder" : "application/octet-stream");
       const size = child.size ? Number(child.size) : undefined;
       const modDate = child.file?.modifiedTime ? new Date(child.file.modifiedTime) : undefined;
@@ -328,10 +329,7 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
     } catch {}
   }, [startUpload]);
 
-  const chonkyFiles = useMemo(() => {
-    if (loading) return null;
-    return files;
-  }, [files, loading]);
+  const chonkyFiles = useMemo(() => files, [files]);
 
   const fileActions = useMemo(() => {
     const uploadFolder = defineFileAction({ id: "upload_folder", button: { name: "Folder upload", toolbar: true, icon: "upload" as any } } as any);
@@ -346,18 +344,27 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-        <p className="text-sm text-red-600">{error}</p>
-        <button onClick={() => void load()} className="mt-3 rounded-full bg-[#0a0a0a] px-5 py-2 text-sm font-semibold text-white">Retry</button>
+      <div className="flex flex-1 flex-col items-center justify-center bg-white p-12 text-center dark:bg-[#131316]">
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <button onClick={() => void load()} className="mt-3 rounded-full bg-[#0a0a0a] px-5 py-2 text-sm font-semibold text-white dark:bg-white dark:text-black">Retry</button>
+      </div>
+    );
+  }
+
+  if (loading && !data) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-3 bg-[#f8f9fa] p-4 dark:bg-[#09090b]">
+        <div className="h-12 animate-pulse rounded-xl bg-white dark:bg-[#1a1a1e]" />
+        <div className="h-64 animate-pulse rounded-2xl bg-white dark:bg-[#1a1a1e]" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f8f9fa]" onDragOver={(e)=>{e.preventDefault();}} onDrop={handleDrop}>
+    <div className="flex min-h-0 flex-1 flex-col bg-[#f8f9fa] dark:bg-[#09090b]" onDragOver={(e)=>{e.preventDefault();}} onDrop={handleDrop}>
       <input ref={fileInputRef} type="file" multiple onChange={handleFilesPicked} className="hidden" />
       <input ref={folderInputRef} type="file" onChange={handleFolderPicked} className="hidden" />
-      <div className="flex flex-1 min-h-0 flex-col bg-white overflow-hidden">
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-[#131316]">
         <div className="flex flex-1 min-h-0 flex-col" style={{ height: "100%" }}>
           <FileBrowser
             files={chonkyFiles as any}
@@ -372,7 +379,7 @@ export function ChonkyDrive({ rootId, rootName, refreshKey, onUploaded }: { root
             <FileContextMenu />
           </FileBrowser>
         </div>
-        <div className="border-t border-[#e8eaed] bg-[#f8f9fa] px-4 py-2 flex items-center gap-3 text-xs text-[#5f6368]">
+        <div className="flex items-center gap-3 border-t border-[#e8eaed] bg-[#f8f9fa] px-4 py-2 text-xs text-[#5f6368] dark:border-[#27272a] dark:bg-[#0f0f12] dark:text-[#a1a1aa]">
           <span>{data ? `${data.fileCount} files · ${formatBytes(data.totalBytes)}` : ""}</span>
           <span className="ml-auto hidden sm:inline">Drag files here to upload · Right-click for actions · Double-click to open/preview</span>
         </div>
