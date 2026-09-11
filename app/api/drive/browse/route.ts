@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/drive/browse?id=<driveFileOrFolderId>[&fresh=1]
+ * GET /api/drive/browse?id=<driveFileOrFolderId>[&fresh=1][&shallow=1]
  * Returns file browser data for a project. For a folder project (whole
  * uploaded tree), recursively lists all files/folders preserving relativePath.
  * For a single file, returns just that file's metadata.
@@ -22,6 +22,12 @@ export const dynamic = "force-dynamic";
  * used after the client changed something (upload landed, trash completed)
  * so the next paint shows truth, not a stale snapshot. Default opens stay
  * cached and fast.
+ *
+ * `shallow=1` lists ONLY the immediate children of a folder (one cheap,
+ * cached Drive call). The team Files browser pages with this — it must
+ * NEVER recursively sync the whole tree, which is what made large Drives
+ * slow and rate-limit-flaky. The recursive mode stays for project bundles
+ * that genuinely need the full tree (zips, virtualized grids).
  *
  * Uses Drive's thumbnailLink/iconLink for fast previews (no extra fetch)
  * and paginates server-side (pageSize 1000 + nextPageToken loop) so even
@@ -46,6 +52,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "A valid Drive file/folder id is required." }, { status: 400 });
   }
   const fresh = new URL(req.url).searchParams.get("fresh") === "1";
+  const shallow = new URL(req.url).searchParams.get("shallow") === "1";
 
   try {
     const accessToken = await getDriveAccessToken(
@@ -100,6 +107,48 @@ export async function GET(req: NextRequest) {
     }
 
     if (isFolder) {
+      // Shallow mode — immediate children only (team Files browser paging).
+      if (shallow) {
+        const children = await listDriveFolderContents(accessToken, id, { fresh });
+        let totalBytes = 0;
+        let fileCount = 0;
+        for (const child of children) {
+          if (!child.isFolder) {
+            fileCount++;
+            const sz = Number(child.size || 0);
+            if (Number.isFinite(sz)) totalBytes += sz;
+          }
+        }
+        return NextResponse.json({
+          root: {
+            id: meta.id as string,
+            name: meta.name as string,
+            mimeType: meta.mimeType as string,
+            size: meta.size,
+            modifiedTime: meta.modifiedTime,
+            thumbnailLink: meta.thumbnailLink,
+            iconLink: meta.iconLink,
+            parents: meta.parents,
+            isFolder: true,
+          },
+          isFolder: true,
+          shallow: true,
+          totalBytes,
+          fileCount,
+          files: children.map((child) => ({
+            id: child.id,
+            name: child.name,
+            mimeType: child.mimeType,
+            size: child.size,
+            modifiedTime: child.modifiedTime,
+            thumbnailLink: child.thumbnailLink,
+            iconLink: child.iconLink,
+            parents: child.parents,
+            isFolder: child.isFolder,
+            relativePath: child.name,
+          })),
+        });
+      }
       // Folder project — recursively list all descendants
       const tree = await listDriveTree(accessToken, id, { fresh });
       // Calculate totals for client warning (e.g., 754MB across 27k files)
